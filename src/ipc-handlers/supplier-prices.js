@@ -1,6 +1,114 @@
-const { getPool } = require('../database/connection');
+const { getPool, getSystemDatabaseName } = require('../database/connection');
 const { qualifyTable } = require('../database/query-builder');
 const credentialsStore = require('../database/credentials-store');
+
+/**
+ * Ensure SuppliersPrices table exists with all required columns
+ */
+async function ensureSuppliersPricesColumns() {
+  try {
+    const pool = getPool();
+    if (!pool) return false;
+
+    const dbConfig = credentialsStore.getCredentials();
+    if (!dbConfig) return false;
+
+    const systemDbName = getSystemDatabaseName(dbConfig);
+
+    // Check if table exists
+    const checkTable = await pool.request().query(`
+      SELECT TABLE_NAME
+      FROM [${systemDbName}].INFORMATION_SCHEMA.TABLES
+      WHERE TABLE_NAME = 'SuppliersPrices'
+        AND TABLE_SCHEMA = 'dbo'
+    `);
+
+    if (checkTable.recordset.length === 0) {
+      // Table doesn't exist - create it
+      console.log('📦 Creating SuppliersPrices table...');
+
+      try {
+        await pool.request().query(`
+          CREATE TABLE [${systemDbName}].[dbo].[SuppliersPrices] (
+            [ItemCode] VARCHAR(50) NOT NULL,
+            [Supplier] VARCHAR(50) NOT NULL,
+            [Reference] VARCHAR(100) NULL,
+            [Price] DECIMAL(18, 2) NOT NULL DEFAULT 0,
+            [ValidFrom] DATETIME NULL,
+            [Comments] VARCHAR(255) NULL,
+            [PriceLevel] INT NULL DEFAULT 0,
+            [Area] VARCHAR(50) NULL,
+            [LastUpdated] DATETIME NULL DEFAULT GETDATE(),
+            CONSTRAINT [PK_SuppliersPrices] PRIMARY KEY CLUSTERED
+            (
+              [ItemCode] ASC,
+              [Supplier] ASC
+            )
+          );
+
+          CREATE NONCLUSTERED INDEX [IX_SuppliersPrices_Reference]
+          ON [${systemDbName}].[dbo].[SuppliersPrices] ([Reference])
+          WHERE [Reference] IS NOT NULL;
+        `);
+        console.log('✅ SuppliersPrices table created successfully');
+        return true;
+      } catch (createErr) {
+        console.error('⚠️  Failed to create SuppliersPrices table:', createErr.message);
+        return false;
+      }
+    }
+
+    // Table exists - check for optional columns
+    const checkColumns = await pool.request().query(`
+      SELECT COLUMN_NAME
+      FROM [${systemDbName}].INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_NAME = 'SuppliersPrices'
+        AND TABLE_SCHEMA = 'dbo'
+        AND COLUMN_NAME IN ('ValidFrom', 'Comments', 'PriceLevel', 'Area', 'LastUpdated')
+    `);
+
+    const existingColumns = checkColumns.recordset.map(row => row.COLUMN_NAME);
+    const columnsToAdd = [];
+
+    // Define columns that should exist
+    const optionalColumns = {
+      'ValidFrom': 'DATETIME NULL',
+      'Comments': 'VARCHAR(255) NULL',
+      'PriceLevel': 'INT NULL DEFAULT 0',
+      'Area': 'VARCHAR(50) NULL',
+      'LastUpdated': 'DATETIME NULL DEFAULT GETDATE()'
+    };
+
+    // Check which columns need to be added
+    for (const [columnName, columnDef] of Object.entries(optionalColumns)) {
+      if (!existingColumns.includes(columnName)) {
+        columnsToAdd.push({ name: columnName, def: columnDef });
+      }
+    }
+
+    // Add missing columns
+    if (columnsToAdd.length > 0) {
+      console.log(`Adding ${columnsToAdd.length} optional columns to SuppliersPrices table...`);
+
+      for (const col of columnsToAdd) {
+        try {
+          await pool.request().query(`
+            ALTER TABLE [${systemDbName}].[dbo].[SuppliersPrices]
+            ADD [${col.name}] ${col.def}
+          `);
+          console.log(`✅ Added column: SuppliersPrices.${col.name}`);
+        } catch (err) {
+          console.error(`⚠️  Failed to add column ${col.name}:`, err.message);
+        }
+      }
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error ensuring SuppliersPrices table:', error);
+    return false;
+  }
+}
 
 /**
  * Get supplier prices for a catalogue item
@@ -276,5 +384,6 @@ module.exports = {
   addSupplierPrice,
   updateSupplierPrice,
   deleteSupplierPrice,
-  getSuppliers
+  getSuppliers,
+  ensureSuppliersPricesColumns
 };

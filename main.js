@@ -163,6 +163,9 @@ app.whenReady().then(async () => {
       // Ensure Supplier column exists in Bill table
       await boqHandlers.ensureSupplierColumn();
 
+      // Ensure optional columns exist in SuppliersPrices table
+      await supplierPricesHandlers.ensureSuppliersPricesColumns();
+
       createMainWindow();
     } catch (error) {
       console.error('Failed to connect to database:', error);
@@ -213,6 +216,9 @@ ipcMain.handle('db:save-connection', async (event, dbConfig) => {
 
     // Ensure Supplier column exists in Bill table
     await boqHandlers.ensureSupplierColumn();
+
+    // Ensure optional columns exist in SuppliersPrices table
+    await supplierPricesHandlers.ensureSuppliersPricesColumns();
 
     // Close settings window and open main window
     if (settingsWindow) {
