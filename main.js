@@ -1,0 +1,376 @@
+const { app, BrowserWindow, ipcMain, Menu } = require('electron');
+const path = require('path');
+const Store = require('electron-store');
+
+// Import database connection
+const db = require('./src/database/connection');
+
+// Import IPC handlers
+const boqHandlers = require('./src/ipc-handlers/boq');
+const jobsHandlers = require('./src/ipc-handlers/jobs');
+const costCentresHandlers = require('./src/ipc-handlers/cost-centres');
+const catalogueHandlers = require('./src/ipc-handlers/catalogue');
+const supplierPricesHandlers = require('./src/ipc-handlers/supplier-prices');
+const catalogueTemplatesHandlers = require('./src/ipc-handlers/catalogue-templates');
+const purchaseOrdersHandlers = require('./src/ipc-handlers/purchase-orders');
+const contactsHandlers = require('./src/ipc-handlers/contacts');
+const boqOptionsStore = require('./src/database/boq-options-store');
+const credentialsStore = require('./src/database/credentials-store');
+
+// Initialize electron-store for settings
+const store = new Store();
+
+let mainWindow = null;
+let settingsWindow = null;
+
+/**
+ * Create the main BOQ window
+ */
+function createMainWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1400,
+    height: 900,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    },
+    icon: path.join(__dirname, 'assets', 'icon.png'),
+    autoHideMenuBar: false
+  });
+
+  // Load frontend
+  if (process.env.NODE_ENV === 'development') {
+    mainWindow.loadURL('http://localhost:5173');
+    mainWindow.webContents.openDevTools();
+  } else {
+    mainWindow.loadFile(path.join(__dirname, 'frontend', 'dist', 'index.html'));
+  }
+
+  // Create menu
+  createMenu();
+
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
+}
+
+/**
+ * Create the database settings window
+ */
+function createSettingsWindow() {
+  settingsWindow = new BrowserWindow({
+    width: 600,
+    height: 700,
+    resizable: false,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false
+    },
+    autoHideMenuBar: true,
+    icon: path.join(__dirname, 'assets', 'icon.png')
+  });
+
+  settingsWindow.loadFile(path.join(__dirname, 'settings.html'));
+
+  settingsWindow.on('closed', () => {
+    settingsWindow = null;
+    // If settings closed without saving and no saved config, quit
+    if (!mainWindow && !store.get('dbConfig')) {
+      app.quit();
+    }
+  });
+}
+
+/**
+ * Create application menu
+ */
+function createMenu() {
+  const template = [
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'Database Settings',
+          click: () => {
+            if (!settingsWindow) {
+              createSettingsWindow();
+            }
+          }
+        },
+        { type: 'separator' },
+        { role: 'quit' }
+      ]
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' }
+      ]
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' }
+      ]
+    },
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: 'About',
+          click: () => {
+            // Show about dialog
+          }
+        }
+      ]
+    }
+  ];
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+}
+
+// ============================================================
+// App Events
+// ============================================================
+
+app.whenReady().then(async () => {
+  // Check if database config exists
+  const dbConfig = store.get('dbConfig');
+
+  if (!dbConfig) {
+    // No config - show settings window first
+    createSettingsWindow();
+  } else {
+    // Config exists - connect to database and show main window
+    try {
+      await db.connect(dbConfig);
+
+      // Ensure Supplier column exists in Bill table
+      await boqHandlers.ensureSupplierColumn();
+
+      createMainWindow();
+    } catch (error) {
+      console.error('Failed to connect to database:', error);
+      createSettingsWindow();
+    }
+  }
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createMainWindow();
+    }
+  });
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
+
+// ============================================================
+// IPC Handlers - Database Connection
+// ============================================================
+
+ipcMain.handle('db:test-connection', async (event, dbConfig) => {
+  return await db.testConnection(dbConfig);
+});
+
+ipcMain.handle('db:save-connection', async (event, dbConfig) => {
+  try {
+    console.log('=== Save Connection ===');
+    console.log('Config received:', JSON.stringify({
+      server: dbConfig.server,
+      database: dbConfig.database,
+      hasUser: !!dbConfig.user,
+      hasPassword: !!dbConfig.password,
+      options: dbConfig.options
+    }, null, 2));
+
+    // Save to electron-store
+    store.set('dbConfig', dbConfig);
+
+    // Also save to credentials store
+    credentialsStore.saveCredentials(dbConfig);
+
+    // Connect to database
+    await db.connect(dbConfig);
+
+    // Ensure Supplier column exists in Bill table
+    await boqHandlers.ensureSupplierColumn();
+
+    // Close settings window and open main window
+    if (settingsWindow) {
+      settingsWindow.close();
+    }
+
+    if (!mainWindow) {
+      createMainWindow();
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('Save connection error:', error);
+    return { success: false, message: error.message };
+  }
+});
+
+ipcMain.handle('db:get-saved-connection', () => {
+  return store.get('dbConfig');
+});
+
+ipcMain.handle('db:clear-saved-connection', () => {
+  store.delete('dbConfig');
+  credentialsStore.clearCredentials();
+  return { success: true };
+});
+
+// ============================================================
+// IPC Handlers - BOQ Operations
+// ============================================================
+
+ipcMain.handle('boq:get-job-bill', boqHandlers.getJobBill);
+ipcMain.handle('boq:add-item', boqHandlers.addItem);
+ipcMain.handle('boq:update-item', boqHandlers.updateItem);
+ipcMain.handle('boq:delete-item', boqHandlers.deleteItem);
+ipcMain.handle('boq:get-cost-centres-with-budgets', boqHandlers.getCostCentresWithBudgets);
+ipcMain.handle('boq:reprice-bill', boqHandlers.repriceBill);
+ipcMain.handle('boq:explode-recipe', boqHandlers.explodeRecipe);
+ipcMain.handle('boq:get-loads', boqHandlers.getLoads);
+ipcMain.handle('boq:create-load', boqHandlers.createLoad);
+ipcMain.handle('boq:generate-report', boqHandlers.generateReport);
+ipcMain.handle('boq:get-nominated-suppliers', boqHandlers.getNominatedSuppliers);
+ipcMain.handle('boq:assign-supplier-to-load', boqHandlers.assignSupplierToLoad);
+ipcMain.handle('boq:ensure-supplier-column', boqHandlers.ensureSupplierColumn);
+
+// ============================================================
+// IPC Handlers - BOQ Options
+// ============================================================
+
+ipcMain.handle('boq-options:get', () => boqOptionsStore.getOptions());
+ipcMain.handle('boq-options:save', (event, options) => boqOptionsStore.saveOptions(options));
+ipcMain.handle('boq-options:update', (event, key, value) => boqOptionsStore.updateOption(key, value));
+ipcMain.handle('boq-options:reset', () => boqOptionsStore.resetOptions());
+ipcMain.handle('boq-options:get-defaults', () => boqOptionsStore.getDefaults());
+ipcMain.handle('boq-options:save-last-used', (event, lastUsed) => boqOptionsStore.saveLastUsed(lastUsed));
+
+// ============================================================
+// IPC Handlers - Jobs (from Job database)
+// ============================================================
+
+ipcMain.handle('jobs:get-list', jobsHandlers.getJobsList);
+ipcMain.handle('jobs:get-job', (event, jobNo) => jobsHandlers.getJob(jobNo));
+ipcMain.handle('jobs:create-job', (event, jobData) => jobsHandlers.createJob(jobData));
+ipcMain.handle('jobs:update-job', (event, jobData) => jobsHandlers.updateJob(jobData));
+ipcMain.handle('jobs:delete-job', (event, jobNo) => jobsHandlers.deleteJob(jobNo));
+ipcMain.handle('jobs:restore-job', (event, jobNo) => jobsHandlers.restoreJob(jobNo));
+ipcMain.handle('jobs:get-statuses', jobsHandlers.getJobStatuses);
+ipcMain.handle('jobs:get-estimators', jobsHandlers.getEstimators);
+ipcMain.handle('jobs:get-supervisors', jobsHandlers.getSupervisors);
+
+// ============================================================
+// IPC Handlers - Cost Centres
+// ============================================================
+
+ipcMain.handle('cost-centres:get-list', costCentresHandlers.getCostCentresList);
+ipcMain.handle('cost-centres:get-cost-centre', (event, code) => costCentresHandlers.getCostCentre(code));
+ipcMain.handle('cost-centres:get-with-budget', (event, jobNo) => costCentresHandlers.getCostCentresWithBudget(jobNo));
+
+// ============================================================
+// IPC Handlers - Contacts
+// ============================================================
+
+ipcMain.handle('contacts:get-list', (event, contactType) => contactsHandlers.getContactsList(event, contactType));
+ipcMain.handle('contacts:get-contact', (event, code) => contactsHandlers.getContact(code));
+ipcMain.handle('contacts:create-contact', (event, contactData) => contactsHandlers.createContact(contactData));
+ipcMain.handle('contacts:update-contact', (event, contactData) => contactsHandlers.updateContact(contactData));
+ipcMain.handle('contacts:get-groups', contactsHandlers.getContactGroups);
+
+// ============================================================
+// IPC Handlers - Catalogue
+// ============================================================
+
+ipcMain.handle('catalogue:get-items', (event, params) => catalogueHandlers.getCatalogueItems(params));
+ipcMain.handle('catalogue:get-item', (event, priceCode, priceLevel) => catalogueHandlers.getCatalogueItem(priceCode, priceLevel));
+ipcMain.handle('catalogue:get-recipe', (event, priceCode) => catalogueHandlers.getRecipeDetails(priceCode));
+
+// ============================================================
+// Supplier Prices IPC Handlers
+// ============================================================
+ipcMain.handle('supplier-prices:get', (event, itemCode) =>
+  supplierPricesHandlers.getSupplierPrices(itemCode));
+ipcMain.handle('supplier-prices:add', (event, priceData) =>
+  supplierPricesHandlers.addSupplierPrice(priceData));
+ipcMain.handle('supplier-prices:update', (event, priceData) =>
+  supplierPricesHandlers.updateSupplierPrice(priceData));
+ipcMain.handle('supplier-prices:delete', (event, itemCode, supplier, reference) =>
+  supplierPricesHandlers.deleteSupplierPrice(itemCode, supplier, reference));
+ipcMain.handle('supplier-prices:get-suppliers', () =>
+  supplierPricesHandlers.getSuppliers());
+
+// ============================================================
+// Catalogue Templates & Specifications IPC Handlers
+// ============================================================
+ipcMain.handle('catalogue-templates:get-template', (event, priceCode) =>
+  catalogueTemplatesHandlers.getTemplate(priceCode));
+ipcMain.handle('catalogue-templates:update-template', (event, data) =>
+  catalogueTemplatesHandlers.updateTemplate(data));
+ipcMain.handle('catalogue-templates:get-specification', (event, priceCode) =>
+  catalogueTemplatesHandlers.getSpecification(priceCode));
+ipcMain.handle('catalogue-templates:update-specification', (event, data) =>
+  catalogueTemplatesHandlers.updateSpecification(data));
+
+// Catalogue Management
+ipcMain.handle('catalogue:get-all-items', (event, params) => catalogueHandlers.getAllCatalogueItems(params));
+ipcMain.handle('catalogue:get-per-codes', () => catalogueHandlers.getPerCodes());
+ipcMain.handle('catalogue:update-item', (event, item) => catalogueHandlers.updateCatalogueItem(item));
+ipcMain.handle('catalogue:add-item', (event, item) => catalogueHandlers.addCatalogueItem(item));
+ipcMain.handle('catalogue:delete-items', (event, priceCodes) => catalogueHandlers.deleteCatalogueItems(priceCodes));
+ipcMain.handle('catalogue:export-csv', (event, params) => catalogueHandlers.exportCatalogueToCSV(params));
+ipcMain.handle('catalogue:add-recipe-component', (event, mainItem, subItem, quantity) => catalogueHandlers.addRecipeComponent(mainItem, subItem, quantity));
+ipcMain.handle('catalogue:update-recipe-component', (event, mainItem, subItem, quantity) => catalogueHandlers.updateRecipeComponent(mainItem, subItem, quantity));
+ipcMain.handle('catalogue:update-recipe-formula', (event, mainItem, subItem, formula) => catalogueHandlers.updateRecipeFormula(mainItem, subItem, formula));
+ipcMain.handle('catalogue:delete-recipe-component', (event, mainItem, subItem) => catalogueHandlers.deleteRecipeComponent(mainItem, subItem));
+
+// ============================================================
+// IPC Handlers - Purchase Orders
+// ============================================================
+
+ipcMain.handle('po:get-jobs', purchaseOrdersHandlers.getJobs);
+ipcMain.handle('po:get-orders-for-job', (event, jobNo) => purchaseOrdersHandlers.getOrdersForJob(event, jobNo));
+ipcMain.handle('po:get-order-line-items', (event, orderNumber) => purchaseOrdersHandlers.getOrderLineItems(event, orderNumber));
+ipcMain.handle('po:render-preview', (event, orderNumber, settings) => purchaseOrdersHandlers.renderOrderPreview(event, orderNumber, settings));
+ipcMain.handle('po:render-pdf', (event, orderNumber, settings) => purchaseOrdersHandlers.renderOrderToPDF(event, orderNumber, settings));
+ipcMain.handle('po:get-order-summary', (event, orderNumber) => purchaseOrdersHandlers.getOrderSummary(event, orderNumber));
+ipcMain.handle('po:get-cost-centres', purchaseOrdersHandlers.getCostCentres);
+ipcMain.handle('po:get-jobs-with-counts', purchaseOrdersHandlers.getJobsWithOrderCounts);
+ipcMain.handle('po:get-preferred-suppliers', (event, costCentre) => purchaseOrdersHandlers.getPreferredSuppliers(event, costCentre));
+ipcMain.handle('po:get-suppliers-for-cost-centre', (event, costCentre) => purchaseOrdersHandlers.getSuppliersForCostCentre(event, costCentre));
+ipcMain.handle('po:update-order', (event, orderNumber, updates) => purchaseOrdersHandlers.updateOrder(event, orderNumber, updates));
+ipcMain.handle('po:log-order', (event, orderNumber, supplier, delDate, note) => purchaseOrdersHandlers.logOrder(event, orderNumber, supplier, delDate, note));
+ipcMain.handle('po:get-order-details', (event, orderNumber) => purchaseOrdersHandlers.getOrderDetails(event, orderNumber));
+ipcMain.handle('po:batch-render-pdf', (event, orderNumbers, settings) => purchaseOrdersHandlers.batchRenderPDF(event, orderNumbers, settings));
+ipcMain.handle('po:batch-print', (event, orderNumbers, settings) => purchaseOrdersHandlers.batchPrint(event, orderNumbers, settings));
+ipcMain.handle('po:batch-email', (event, orderNumbers, settings) => purchaseOrdersHandlers.batchEmail(event, orderNumbers, settings));
+ipcMain.handle('po:batch-save-pdf', (event, orderNumbers, settings) => purchaseOrdersHandlers.batchSavePDF(event, orderNumbers, settings));
+ipcMain.handle('po:get-all-suppliers', purchaseOrdersHandlers.getAllSuppliers);
+ipcMain.handle('po:add-nominated-supplier', (event, costCentre, supplierCode) => purchaseOrdersHandlers.addNominatedSupplier(event, costCentre, supplierCode));
+ipcMain.handle('po:remove-nominated-supplier', (event, costCentre, supplierCode) => purchaseOrdersHandlers.removeNominatedSupplier(event, costCentre, supplierCode));
+ipcMain.handle('po:ensure-status-column', purchaseOrdersHandlers.ensureStatusColumn);
+
+console.log('DBx BOQ - Electron main process initialized');

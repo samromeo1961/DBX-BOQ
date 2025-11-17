@@ -1,0 +1,446 @@
+<template>
+  <div class="boq-tab h-100 d-flex flex-column">
+    <!-- BOQ Toolbar -->
+    <BOQToolbar
+      v-model:selectedJob="selectedJob"
+      v-model:selectedPriceLevel="selectedPriceLevel"
+      v-model:selectedLoad="selectedLoad"
+      v-model:selectedCostCentre="selectedCostCentre"
+      v-model:billDate="billDate"
+      :catalogueVisible="catalogueSearchVisible"
+      @refresh="loadBill"
+      @toggleCatalogueSearch="catalogueSearchVisible = !catalogueSearchVisible"
+    />
+
+    <!-- Main Content Area -->
+    <div :class="['boq-content', 'flex-grow-1', 'd-flex', catalogueLayoutHorizontal ? 'flex-column' : 'flex-row', 'overflow-hidden']">
+      <!-- Top/Left Section: Cost Centre Panel + BOQ Grid -->
+      <div :class="['boq-main-section', 'd-flex', 'overflow-hidden', { 'with-catalogue-horizontal': catalogueSearchVisible && catalogueLayoutHorizontal }, { 'with-catalogue-vertical': catalogueSearchVisible && !catalogueLayoutHorizontal }]">
+        <!-- Cost Centre Panel (Left Sidebar) -->
+        <CostCentrePanel
+          :selectedJob="selectedJob"
+          v-model:selectedCostCentre="selectedCostCentre"
+        />
+
+        <!-- BOQ Grid -->
+        <div class="boq-grid-container flex-grow-1">
+          <BOQGrid
+            :billItems="billItems"
+            :loading="loading"
+            :jobNo="selectedJob"
+            :costCentre="selectedCostCentre"
+            :availableLoads="availableLoads"
+            @cellValueChanged="onCellValueChanged"
+            @deleteItems="onDeleteItems"
+            @refresh="loadBill"
+          />
+        </div>
+      </div>
+
+      <!-- Catalogue Search Panel (Horizontal Bottom or Vertical Right) -->
+      <transition :name="catalogueLayoutHorizontal ? 'slide-vertical' : 'slide-horizontal'">
+        <div
+          v-if="catalogueSearchVisible"
+          :class="catalogueLayoutHorizontal ? 'catalogue-search-panel-horizontal' : 'catalogue-search-panel-vertical'"
+        >
+          <BOQCatalogueSearch
+            :costCentre="selectedCostCentre"
+            :priceLevel="selectedPriceLevel"
+            :billDate="billDate"
+            :layoutHorizontal="catalogueLayoutHorizontal"
+            @addItems="onAddItems"
+            @close="catalogueSearchVisible = false"
+            @toggleLayout="catalogueLayoutHorizontal = !catalogueLayoutHorizontal"
+          />
+        </div>
+      </transition>
+    </div>
+
+    <!-- Status Bar -->
+    <div class="status-bar bg-light border-top py-1 px-3 small">
+      <div class="d-flex justify-content-between">
+        <div>
+          <span v-if="selectedJob" class="me-3">
+            <strong>Job:</strong> {{ selectedJob }}
+          </span>
+          <span v-if="selectedCostCentre" class="me-3">
+            <strong>Cost Centre:</strong> {{ selectedCostCentre }}
+          </span>
+          <span class="me-3">
+            <strong>Items:</strong> {{ billItems.length }}
+          </span>
+        </div>
+        <div>
+          <strong>Total:</strong> ${{ billTotal.toFixed(2) }}
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+import { ref, computed, watch, onMounted } from 'vue';
+import { useElectronAPI } from '@/composables/useElectronAPI';
+import BOQToolbar from './BOQToolbar.vue';
+import BOQGrid from './BOQGrid.vue';
+import BOQCatalogueSearch from './BOQCatalogueSearch.vue';
+import CostCentrePanel from './CostCentrePanel.vue';
+
+export default {
+  name: 'BillOfQuantitiesTab',
+  components: {
+    BOQToolbar,
+    BOQGrid,
+    BOQCatalogueSearch,
+    CostCentrePanel
+  },
+  setup() {
+    const api = useElectronAPI();
+
+    // State
+    const selectedJob = ref(null);
+    const selectedPriceLevel = ref(1);
+    const selectedLoad = ref(1);
+    const selectedCostCentre = ref(null);
+    const billDate = ref(new Date());
+    const billItems = ref([]);
+    const loading = ref(false);
+    const catalogueSearchVisible = ref(false);
+    const catalogueLayoutHorizontal = ref(true); // true = horizontal (bottom), false = vertical (right)
+    const availableLoads = ref([]);
+
+    // Computed
+    const billTotal = computed(() => {
+      return billItems.value.reduce((sum, item) => sum + (item.LineTotal || 0), 0);
+    });
+
+    // Methods
+    async function loadBill() {
+      if (!selectedJob.value) {
+        billItems.value = [];
+        return;
+      }
+
+      console.log('📋 Loading bill for:', {
+        job: selectedJob.value,
+        costCentre: selectedCostCentre.value
+      });
+
+      loading.value = true;
+      try {
+        // Pass null for bLoad to show ALL items from ALL loads in the cost centre
+        const result = await api.boq.getJobBill(
+          selectedJob.value,
+          selectedCostCentre.value,
+          null
+        );
+
+        console.log('📦 Bill result:', result);
+
+        if (result.success) {
+          billItems.value = result.data;
+          console.log(`✅ Loaded ${billItems.value.length} bill items`);
+          if (billItems.value.length > 0) {
+            console.log('First item:', billItems.value[0]);
+            console.log('All item codes:', billItems.value.map(i => i.ItemCode));
+          }
+        } else {
+          console.error('Failed to load bill:', result.message);
+          billItems.value = [];
+        }
+      } catch (error) {
+        console.error('Error loading bill:', error);
+        billItems.value = [];
+      } finally {
+        loading.value = false;
+      }
+    }
+
+    async function onCellValueChanged(event) {
+      const { data, colDef } = event;
+
+      console.log('✏️ Cell value changed:', {
+        field: colDef.field,
+        itemCode: data.ItemCode,
+        newValue: data[colDef.field]
+      });
+
+      loading.value = true;
+      try {
+        const updateData = {
+          JobNo: data.JobNo,
+          CostCentre: data.CostCentre,
+          BLoad: data.BLoad,
+          LineNumber: data.LineNumber,
+          Quantity: data.Quantity,
+          UnitPrice: data.UnitPrice,
+          XDescription: data.Workup
+        };
+
+        console.log('Updating item with:', updateData);
+
+        const result = await api.boq.updateItem(updateData);
+
+        console.log('Update result:', result);
+
+        if (!result.success) {
+          console.error('Failed to update item:', result.message);
+          // Reload to revert changes
+          await loadBill();
+        } else {
+          console.log('✅ Item updated successfully');
+          // Reload to get updated calculated values
+          await loadBill();
+        }
+      } catch (error) {
+        console.error('Error updating item:', error);
+        await loadBill();
+      } finally {
+        loading.value = false;
+      }
+    }
+
+    async function onAddItems(selectedItems) {
+      if (!selectedJob.value) {
+        alert('Please select a job first');
+        return;
+      }
+
+      console.log('➕ Adding items to bill:', selectedItems);
+
+      loading.value = true;
+      try {
+        // Get BOQ options for default values
+        const optionsResult = await api.boqOptions.get();
+        const options = optionsResult.success ? optionsResult.options : {};
+        const defaultQuantity = options.newItems?.defaultQuantity || 1;
+
+        for (const item of selectedItems) {
+          console.log('Adding item:', {
+            JobNo: selectedJob.value,
+            ItemCode: item.PriceCode,
+            CostCentre: selectedCostCentre.value || item.CostCentre,
+            BLoad: selectedLoad.value,
+            Quantity: defaultQuantity,
+            UnitPrice: item.Price || 0,
+            XDescription: item.Description
+          });
+
+          await api.boq.addItem({
+            JobNo: selectedJob.value,
+            ItemCode: item.PriceCode,
+            CostCentre: selectedCostCentre.value || item.CostCentre,
+            BLoad: selectedLoad.value,
+            Quantity: defaultQuantity,
+            UnitPrice: item.Price || 0,
+            XDescription: item.Description || null
+          });
+        }
+
+        // Reload bill
+        await loadBill();
+      } catch (error) {
+        console.error('Error adding items:', error);
+      } finally {
+        loading.value = false;
+      }
+    }
+
+    async function onDeleteItems(items) {
+      if (!confirm(`Delete ${items.length} item(s)?`)) {
+        return;
+      }
+
+      loading.value = true;
+      try {
+        for (const item of items) {
+          await api.boq.deleteItem(
+            item.JobNo,
+            item.CostCentre,
+            item.BLoad,
+            item.LineNumber
+          );
+        }
+
+        await loadBill();
+      } catch (error) {
+        console.error('Error deleting items:', error);
+      } finally {
+        loading.value = false;
+      }
+    }
+
+    // Watchers
+    // Note: Not watching selectedLoad since we display ALL loads in the grid
+    watch([selectedJob, selectedCostCentre], () => {
+      loadBill();
+    });
+
+    // Save catalogue preferences
+    async function saveCataloguePreferences() {
+      try {
+        const optionsResult = await api.boqOptions.get();
+        const options = optionsResult.success ? optionsResult.options : {};
+
+        await api.boqOptions.save({
+          ...options,
+          catalogue: {
+            visible: catalogueSearchVisible.value,
+            layoutHorizontal: catalogueLayoutHorizontal.value
+          }
+        });
+      } catch (error) {
+        console.error('Error saving catalogue preferences:', error);
+      }
+    }
+
+    // Watch catalogue state and save preferences
+    watch([catalogueSearchVisible, catalogueLayoutHorizontal], () => {
+      saveCataloguePreferences();
+    });
+
+    // Initialize
+    onMounted(async () => {
+      // Load last used values and preferences from options
+      const optionsResult = await api.boqOptions.get();
+      if (optionsResult.success) {
+        // Load last used values
+        if (optionsResult.options.lastUsed) {
+          const lastUsed = optionsResult.options.lastUsed;
+          if (lastUsed.job) selectedJob.value = lastUsed.job;
+          // Upgrade price level 0 to 1 (price level 0 doesn't exist)
+          if (lastUsed.priceLevel !== undefined) {
+            selectedPriceLevel.value = lastUsed.priceLevel === 0 ? 1 : lastUsed.priceLevel;
+          }
+          if (lastUsed.load) selectedLoad.value = lastUsed.load;
+          if (lastUsed.costCentre) selectedCostCentre.value = lastUsed.costCentre;
+        }
+
+        // Load catalogue preferences
+        if (optionsResult.options.catalogue) {
+          if (optionsResult.options.catalogue.visible !== undefined) {
+            catalogueSearchVisible.value = optionsResult.options.catalogue.visible;
+          }
+          if (optionsResult.options.catalogue.layoutHorizontal !== undefined) {
+            catalogueLayoutHorizontal.value = optionsResult.options.catalogue.layoutHorizontal;
+          }
+        }
+
+        // Load available loads from preferences
+        const numberOfLoads = optionsResult.options.numberOfLoads || 10;
+        availableLoads.value = Array.from({ length: numberOfLoads }, (_, i) => i + 1);
+      } else {
+        // Default to 10 loads
+        availableLoads.value = Array.from({ length: 10 }, (_, i) => i + 1);
+      }
+    });
+
+    return {
+      selectedJob,
+      selectedPriceLevel,
+      selectedLoad,
+      selectedCostCentre,
+      billDate,
+      billItems,
+      loading,
+      catalogueSearchVisible,
+      catalogueLayoutHorizontal,
+      availableLoads,
+      billTotal,
+      loadBill,
+      onCellValueChanged,
+      onAddItems,
+      onDeleteItems
+    };
+  }
+};
+</script>
+
+<style scoped>
+.boq-tab {
+  background-color: #fff;
+}
+
+.boq-content {
+  position: relative;
+}
+
+.boq-main-section {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  transition: flex 0.3s ease;
+}
+
+/* Horizontal layout (catalogue at bottom) */
+.boq-main-section.with-catalogue-horizontal {
+  flex: 0 0 50%;
+}
+
+/* Vertical layout (catalogue on right) */
+.boq-main-section.with-catalogue-vertical {
+  flex: 0 0 60%;
+}
+
+.boq-grid-container {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Horizontal catalogue panel (bottom) */
+.catalogue-search-panel-horizontal {
+  flex: 0 0 50%;
+  border-top: 2px solid #dee2e6;
+  background-color: #f8f9fa;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Vertical catalogue panel (right sidebar) */
+.catalogue-search-panel-vertical {
+  flex: 0 0 40%;
+  border-left: 2px solid #dee2e6;
+  background-color: #f8f9fa;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-width: 400px;
+}
+
+.status-bar {
+  flex-shrink: 0;
+}
+
+/* Vertical slide transition (for horizontal layout) */
+.slide-vertical-enter-active,
+.slide-vertical-leave-active {
+  transition: all 0.3s ease;
+}
+
+.slide-vertical-enter-from {
+  transform: translateY(100%);
+  opacity: 0;
+}
+
+.slide-vertical-leave-to {
+  transform: translateY(100%);
+  opacity: 0;
+}
+
+/* Horizontal slide transition (for vertical layout) */
+.slide-horizontal-enter-active,
+.slide-horizontal-leave-active {
+  transition: all 0.3s ease;
+}
+
+.slide-horizontal-enter-from {
+  transform: translateX(100%);
+  opacity: 0;
+}
+
+.slide-horizontal-leave-to {
+  transform: translateX(100%);
+  opacity: 0;
+}
+</style>

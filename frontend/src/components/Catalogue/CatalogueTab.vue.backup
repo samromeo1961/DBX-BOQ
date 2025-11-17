@@ -1,0 +1,561 @@
+<template>
+  <div class="catalogue-tab h-100 d-flex flex-column">
+    <!-- Toolbar -->
+    <CatalogueToolbar
+      v-model:searchTerm="searchTerm"
+      v-model:showArchived="showArchived"
+      v-model:showRecipesOnly="showRecipesOnly"
+      @add="showAddModal = true"
+      @import="showImportModal = true"
+      @export="exportCatalogue"
+      @refresh="loadCatalogue"
+      @clearFilters="clearGridFilters"
+    />
+
+    <!-- Main Content Area -->
+    <div class="catalogue-content flex-grow-1 d-flex overflow-hidden">
+      <!-- Cost Centre Panel (Left Sidebar) -->
+      <CostCentrePanel
+        v-model:selectedCostCentre="selectedCostCentre"
+        :showAllOption="true"
+        :catalogueItems="catalogueItems"
+      />
+
+      <!-- Catalogue Grid and Details (Center/Right) -->
+      <div class="catalogue-grid-container flex-grow-1">
+        <!-- Main Grid -->
+        <div class="catalogue-grid-section">
+          <CatalogueGrid
+            ref="catalogueGridRef"
+            :catalogueItems="filteredItems"
+            :loading="loading"
+            :perCodes="perCodes"
+            :costCentres="costCentres"
+            @cellValueChanged="onCellValueChanged"
+            @duplicateItem="onDuplicateItem"
+            @manageRecipe="onManageRecipe"
+            @archiveItems="onArchiveItems"
+            @unarchiveItems="onUnarchiveItems"
+            @rowClicked="onItemSelected"
+          />
+        </div>
+
+        <!-- Item Details Tabs -->
+        <div v-if="selectedItemCode" class="item-details-section border-top">
+          <!-- Tab Navigation -->
+          <ul class="nav nav-tabs" role="tablist">
+            <li class="nav-item">
+              <button
+                class="nav-link"
+                :class="{ active: activeTab === 'prices' }"
+                @click="activeTab = 'prices'"
+                type="button"
+              >
+                <i class="bi bi-truck me-1"></i>
+                Supplier Prices
+              </button>
+            </li>
+            <li class="nav-item">
+              <button
+                class="nav-link"
+                :class="{ active: activeTab === 'template' }"
+                @click="activeTab = 'template'"
+                type="button"
+              >
+                <i class="bi bi-file-text me-1"></i>
+                Template
+              </button>
+            </li>
+            <li class="nav-item">
+              <button
+                class="nav-link"
+                :class="{ active: activeTab === 'specification' }"
+                @click="activeTab = 'specification'"
+                type="button"
+              >
+                <i class="bi bi-file-earmark-text me-1"></i>
+                Specification
+              </button>
+            </li>
+          </ul>
+
+          <!-- Tab Content -->
+          <div class="tab-content">
+            <div v-show="activeTab === 'prices'" class="tab-pane">
+              <SupplierPricesPanel
+                :itemCode="selectedItemCode"
+                @updated="loadCatalogue"
+              />
+            </div>
+            <div v-show="activeTab === 'template'" class="tab-pane">
+              <TemplateEditor
+                :itemCode="selectedItemCode"
+                @updated="loadCatalogue"
+              />
+            </div>
+            <div v-show="activeTab === 'specification'" class="tab-pane">
+              <SpecificationEditor
+                :itemCode="selectedItemCode"
+                @updated="loadCatalogue"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Status Bar -->
+    <div class="status-bar bg-light border-top py-1 px-3 small">
+      <div class="d-flex justify-content-between">
+        <div>
+          <span v-if="selectedCostCentre" class="me-3">
+            <strong>Cost Centre:</strong> {{ selectedCostCentre }}
+          </span>
+          <span class="me-3">
+            <strong>Items:</strong> {{ filteredItems.length }} / {{ catalogueItems.length }}
+          </span>
+          <span v-if="selectedItemCode" class="me-3 text-primary">
+            <strong>Selected:</strong> {{ selectedItemCode }}
+          </span>
+        </div>
+        <div>
+          <span v-if="showArchived" class="badge bg-warning text-dark">
+            Showing Archived Items
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Add/Edit Modal -->
+    <CatalogueItemModal
+      v-if="showAddModal"
+      :item="editingItem"
+      :perCodes="perCodes"
+      :costCentres="costCentres"
+      @close="showAddModal = false; editingItem = null"
+      @save="onSaveItem"
+    />
+
+    <!-- Import Modal -->
+    <CatalogueImportModal
+      v-if="showImportModal"
+      @close="showImportModal = false"
+      @imported="loadCatalogue"
+    />
+
+    <!-- Recipe Management Modal -->
+    <RecipeManagementModal
+      v-if="showRecipeModal"
+      :priceCode="editingRecipePriceCode"
+      @close="showRecipeModal = false; editingRecipePriceCode = null"
+      @saved="loadCatalogue"
+    />
+  </div>
+</template>
+
+<script>
+import { ref, computed, watch, onMounted } from 'vue';
+import { useElectronAPI } from '@/composables/useElectronAPI';
+import CatalogueToolbar from './CatalogueToolbar.vue';
+import CatalogueGrid from './CatalogueGrid.vue';
+import CostCentrePanel from '../BOQ/CostCentrePanel.vue';
+import CatalogueItemModal from './CatalogueItemModal.vue';
+import CatalogueImportModal from './CatalogueImportModal.vue';
+import RecipeManagementModal from './RecipeManagementModal.vue';
+import SupplierPricesPanel from './SupplierPricesPanel.vue';
+import TemplateEditor from './TemplateEditor.vue';
+import SpecificationEditor from './SpecificationEditor.vue';
+
+export default {
+  name: 'CatalogueTab',
+  components: {
+    CatalogueToolbar,
+    CatalogueGrid,
+    CostCentrePanel,
+    CatalogueItemModal,
+    CatalogueImportModal,
+    RecipeManagementModal,
+    SupplierPricesPanel,
+    TemplateEditor,
+    SpecificationEditor
+  },
+  setup() {
+    const api = useElectronAPI();
+
+    // State
+    const catalogueItems = ref([]);
+    const perCodes = ref([]);
+    const costCentres = ref([]);
+    const loading = ref(false);
+    const searchTerm = ref('');
+    const showArchived = ref(false);
+    const showRecipesOnly = ref(false);
+    const selectedCostCentre = ref(null);
+    const showAddModal = ref(false);
+    const showImportModal = ref(false);
+    const showRecipeModal = ref(false);
+    const editingItem = ref(null);
+    const editingRecipePriceCode = ref(null);
+    const catalogueGridRef = ref(null);
+    const selectedItemCode = ref(null);
+    const activeTab = ref('prices');
+
+    // Computed - Just pass through the items from backend (backend does all filtering)
+    const filteredItems = computed(() => catalogueItems.value);
+
+    // Methods
+    async function loadCatalogue() {
+      loading.value = true;
+      try {
+        const params = {
+          showArchived: showArchived.value,
+          searchTerm: searchTerm.value,
+          costCentre: selectedCostCentre.value && selectedCostCentre.value !== 'ALL'
+            ? selectedCostCentre.value
+            : null,
+          recipesOnly: showRecipesOnly.value
+        };
+
+        const result = await api.catalogue.getAllItems(params);
+        if (result.success) {
+          catalogueItems.value = result.data || [];
+        }
+      } catch (error) {
+        console.error('Error loading catalogue:', error);
+      } finally {
+        loading.value = false;
+      }
+    }
+
+    async function loadPerCodes() {
+      try {
+        const result = await api.catalogue.getPerCodes();
+        if (result.success) {
+          perCodes.value = result.data || [];
+        }
+      } catch (error) {
+        console.error('Error loading per codes:', error);
+      }
+    }
+
+    async function loadCostCentres() {
+      try {
+        const result = await api.costCentres.getList();
+        if (result.success) {
+          costCentres.value = result.data || [];
+        }
+      } catch (error) {
+        console.error('Error loading cost centres:', error);
+      }
+    }
+
+    async function onCellValueChanged(event) {
+      const { data } = event;
+
+      loading.value = true;
+      try {
+        const result = await api.catalogue.updateItem({
+          PriceCode: data.PriceCode,
+          Description: data.Description,
+          CostCentre: data.CostCentre,
+          PerCode: data.PerCode,
+          Price1: data.Price1,
+          Price2: data.Price2,
+          Price3: data.Price3,
+          Price4: data.Price4,
+          Price5: data.Price5,
+          Archived: data.Archived
+        });
+
+        if (!result.success) {
+          console.error('Failed to update item:', result.message);
+          await loadCatalogue(); // Reload to revert changes
+        }
+      } catch (error) {
+        console.error('Error updating item:', error);
+        await loadCatalogue();
+      } finally {
+        loading.value = false;
+      }
+    }
+
+    async function onDeleteItems(items) {
+      if (!confirm(`Delete ${items.length} item(s)? This action cannot be undone.`)) {
+        return;
+      }
+
+      loading.value = true;
+      try {
+        const priceCodes = items.map(item => item.PriceCode);
+        const result = await api.catalogue.deleteItems(priceCodes);
+
+        if (!result.success) {
+          alert('Error deleting items: ' + result.message);
+        }
+
+        await loadCatalogue();
+      } catch (error) {
+        console.error('Error deleting items:', error);
+        alert('Error deleting items: ' + error.message);
+      } finally {
+        loading.value = false;
+      }
+    }
+
+    async function onDuplicateItem(item) {
+      editingItem.value = {
+        ...item,
+        PriceCode: '' // Clear code so user can enter new one
+      };
+      showAddModal.value = true;
+    }
+
+    async function onSaveItem(itemData) {
+      loading.value = true;
+      try {
+        const result = await api.catalogue.addItem(itemData);
+        if (result.success) {
+          showAddModal.value = false;
+          editingItem.value = null;
+          await loadCatalogue();
+        } else {
+          alert('Error saving item: ' + result.message);
+        }
+      } catch (error) {
+        console.error('Error saving item:', error);
+        alert('Error saving item: ' + error.message);
+      } finally {
+        loading.value = false;
+      }
+    }
+
+    function onManageRecipe(priceCode) {
+      editingRecipePriceCode.value = priceCode;
+      showRecipeModal.value = true;
+    }
+
+    async function exportCatalogue() {
+      try {
+        const result = await api.catalogue.exportToCSV({
+          costCentre: selectedCostCentre.value,
+          showArchived: showArchived.value
+        });
+        if (result.success) {
+          alert('Catalogue exported successfully to: ' + result.filePath);
+        } else {
+          alert('Error exporting catalogue: ' + result.message);
+        }
+      } catch (error) {
+        console.error('Error exporting catalogue:', error);
+        alert('Error exporting catalogue: ' + error.message);
+      }
+    }
+
+    async function onArchiveItems(items) {
+      if (!confirm(`Archive ${items.length} item(s)?`)) {
+        return;
+      }
+
+      loading.value = true;
+      try {
+        for (const item of items) {
+          await api.catalogue.updateItem({
+            PriceCode: item.PriceCode,
+            Description: item.Description,
+            CostCentre: item.CostCentre,
+            PerCode: item.PerCode,
+            Price1: item.Price1,
+            Price2: item.Price2,
+            Price3: item.Price3,
+            Price4: item.Price4,
+            Price5: item.Price5,
+            Archived: true
+          });
+        }
+        await loadCatalogue();
+      } catch (error) {
+        console.error('Error archiving items:', error);
+        alert('Error archiving items: ' + error.message);
+      } finally {
+        loading.value = false;
+      }
+    }
+
+    async function onUnarchiveItems(items) {
+      if (!confirm(`Unarchive ${items.length} item(s)?`)) {
+        return;
+      }
+
+      loading.value = true;
+      try {
+        for (const item of items) {
+          await api.catalogue.updateItem({
+            PriceCode: item.PriceCode,
+            Description: item.Description,
+            CostCentre: item.CostCentre,
+            PerCode: item.PerCode,
+            Price1: item.Price1,
+            Price2: item.Price2,
+            Price3: item.Price3,
+            Price4: item.Price4,
+            Price5: item.Price5,
+            Archived: false
+          });
+        }
+        await loadCatalogue();
+      } catch (error) {
+        console.error('Error unarchiving items:', error);
+        alert('Error unarchiving items: ' + error.message);
+      } finally {
+        loading.value = false;
+      }
+    }
+
+    function clearGridFilters() {
+      if (catalogueGridRef.value) {
+        catalogueGridRef.value.clearFilters();
+      }
+    }
+
+    function onItemSelected(event) {
+      if (event && event.data && event.data.PriceCode) {
+        selectedItemCode.value = event.data.PriceCode;
+        activeTab.value = 'prices'; // Default to prices tab
+      } else {
+        selectedItemCode.value = null;
+      }
+    }
+
+    // Watchers
+    watch(showArchived, () => {
+      loadCatalogue();
+    });
+
+    watch(showRecipesOnly, () => {
+      loadCatalogue();
+    });
+
+    watch(selectedCostCentre, () => {
+      loadCatalogue();
+    });
+
+    // Debounced search - wait 300ms after user stops typing
+    let searchTimeout = null;
+    watch(searchTerm, () => {
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+      }
+      searchTimeout = setTimeout(() => {
+        loadCatalogue();
+      }, 300);
+    });
+
+    // Initialize
+    onMounted(async () => {
+      await Promise.all([
+        loadCatalogue(),
+        loadPerCodes(),
+        loadCostCentres()
+      ]);
+    });
+
+    return {
+      catalogueItems,
+      filteredItems,
+      perCodes,
+      costCentres,
+      loading,
+      searchTerm,
+      showArchived,
+      showRecipesOnly,
+      selectedCostCentre,
+      showAddModal,
+      showImportModal,
+      showRecipeModal,
+      editingItem,
+      editingRecipePriceCode,
+      catalogueGridRef,
+      selectedItemCode,
+      activeTab,
+      loadCatalogue,
+      onCellValueChanged,
+      onDeleteItems,
+      onDuplicateItem,
+      onSaveItem,
+      onManageRecipe,
+      exportCatalogue,
+      onArchiveItems,
+      onUnarchiveItems,
+      clearGridFilters,
+      onItemSelected
+    };
+  }
+};
+</script>
+
+<style scoped>
+.catalogue-tab {
+  background-color: #fff;
+}
+
+.catalogue-content {
+  position: relative;
+}
+
+.catalogue-grid-container {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.catalogue-grid-section {
+  flex: 1;
+  min-height: 300px;
+  overflow: hidden;
+}
+
+.item-details-section {
+  height: 450px;
+  display: flex;
+  flex-direction: column;
+  background-color: #fff;
+}
+
+.item-details-section .nav-tabs {
+  border-bottom: 1px solid #dee2e6;
+  padding: 0 1rem;
+  background-color: #f8f9fa;
+  flex-shrink: 0;
+}
+
+.item-details-section .nav-link {
+  border: none;
+  color: #6c757d;
+  padding: 0.75rem 1rem;
+  background: none;
+  cursor: pointer;
+}
+
+.item-details-section .nav-link:hover {
+  color: #0d6efd;
+  border: none;
+}
+
+.item-details-section .nav-link.active {
+  color: #0d6efd;
+  background-color: #fff;
+  border: none;
+  border-bottom: 2px solid #0d6efd;
+}
+
+.item-details-section .tab-content {
+  flex: 1;
+  overflow: hidden;
+}
+
+.item-details-section .tab-pane {
+  height: 100%;
+  overflow-y: auto;
+}
+</style>

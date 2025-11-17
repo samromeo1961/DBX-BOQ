@@ -1,0 +1,28 @@
+# Node modules
+node_modules/
+frontend/node_modules/
+
+# Build outputs
+dist/
+frontend/dist/
+*.log
+
+# electron-store data
+*.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+
+# Electron builder
+release/

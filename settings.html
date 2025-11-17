@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Database Settings - DBx BOQ</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      width: 100%;
+      max-width: 500px;
+      padding: 30px;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+
+    .header h1 {
+      color: #333;
+      font-size: 24px;
+      margin-bottom: 8px;
+    }
+
+    .header p {
+      color: #666;
+      font-size: 14px;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 6px;
+      color: #333;
+      font-weight: 500;
+      font-size: 14px;
+    }
+
+    input[type="text"],
+    input[type="password"],
+    input[type="number"],
+    select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 2px solid #e0e0e0;
+      border-radius: 6px;
+      font-size: 14px;
+      transition: border-color 0.3s;
+    }
+
+    input[type="text"]:focus,
+    input[type="password"]:focus,
+    input[type="number"]:focus,
+    select:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .checkbox-group input[type="checkbox"] {
+      margin-right: 8px;
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+    }
+
+    .checkbox-group label {
+      margin: 0;
+      cursor: pointer;
+      font-weight: 400;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 30px;
+    }
+
+    button {
+      flex: 1;
+      padding: 12px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .btn-primary {
+      background: #667eea;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #5568d3;
+    }
+
+    .btn-primary:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      background: #e0e0e0;
+      color: #333;
+    }
+
+    .btn-secondary:hover {
+      background: #d0d0d0;
+    }
+
+    .btn-test {
+      background: #10b981;
+      color: white;
+    }
+
+    .btn-test:hover {
+      background: #059669;
+    }
+
+    .message {
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+      font-size: 14px;
+      display: none;
+    }
+
+    .message.success {
+      background: #d1fae5;
+      color: #065f46;
+      border: 1px solid #10b981;
+    }
+
+    .message.error {
+      background: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #ef4444;
+    }
+
+    .message.info {
+      background: #dbeafe;
+      color: #1e40af;
+      border: 1px solid #3b82f6;
+    }
+
+    .help-text {
+      font-size: 12px;
+      color: #666;
+      margin-top: 4px;
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top-color: white;
+      animation: spin 0.6s linear infinite;
+      margin-right: 8px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Database Configuration</h1>
+      <p>Configure your SQL Server connection</p>
+    </div>
+
+    <div id="message" class="message"></div>
+
+    <form id="dbForm">
+      <div class="form-group">
+        <label for="server">SQL Server Address *</label>
+        <input
+          type="text"
+          id="server"
+          name="server"
+          placeholder="localhost or 192.168.1.100"
+          required
+        />
+        <div class="help-text">Enter the server name or IP address</div>
+      </div>
+
+      <div class="form-group">
+        <label for="port">Port</label>
+        <input
+          type="number"
+          id="port"
+          name="port"
+          value="1433"
+          placeholder="1433"
+        />
+        <div class="help-text">Default SQL Server port is 1433</div>
+      </div>
+
+      <div class="form-group">
+        <label for="database">System Database Name *</label>
+        <input
+          type="text"
+          id="database"
+          name="database"
+          placeholder="e.g., CROWNESYS"
+          required
+        />
+        <div class="help-text">The system database (Job DB will be auto-detected)</div>
+      </div>
+
+      <div class="form-group">
+        <label for="jobDatabase">Job Database Name (Optional)</label>
+        <input
+          type="text"
+          id="jobDatabase"
+          name="jobDatabase"
+          placeholder="e.g., CROWNEJOB (auto-detected if empty)"
+        />
+        <div class="help-text">Leave empty for automatic detection</div>
+      </div>
+
+      <div class="checkbox-group">
+        <input type="checkbox" id="trustedConnection" name="trustedConnection" />
+        <label for="trustedConnection">Use Windows Authentication</label>
+      </div>
+
+      <div id="credentialsSection">
+        <div class="form-group">
+          <label for="user">Username *</label>
+          <input
+            type="text"
+            id="user"
+            name="user"
+            placeholder="Database username"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="password">Password *</label>
+          <input
+            type="password"
+            id="password"
+            name="password"
+            placeholder="Database password"
+          />
+        </div>
+      </div>
+
+      <div class="button-group">
+        <button type="button" id="testBtn" class="btn-test">
+          Test Connection
+        </button>
+        <button type="submit" id="saveBtn" class="btn-primary" disabled>
+          Save & Connect
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <script>
+    const { ipcRenderer } = require('electron');
+
+    const form = document.getElementById('dbForm');
+    const testBtn = document.getElementById('testBtn');
+    const saveBtn = document.getElementById('saveBtn');
+    const messageDiv = document.getElementById('message');
+    const trustedConnectionCheckbox = document.getElementById('trustedConnection');
+    const credentialsSection = document.getElementById('credentialsSection');
+
+    // Toggle credentials fields based on trusted connection
+    trustedConnectionCheckbox.addEventListener('change', (e) => {
+      credentialsSection.style.display = e.target.checked ? 'none' : 'block';
+      document.getElementById('user').required = !e.target.checked;
+      document.getElementById('password').required = !e.target.checked;
+    });
+
+    // Load saved configuration
+    window.addEventListener('DOMContentLoaded', async () => {
+      const savedConfig = await ipcRenderer.invoke('db:get-saved-connection');
+      if (savedConfig) {
+        document.getElementById('server').value = savedConfig.server || '';
+        document.getElementById('port').value = savedConfig.port || 1433;
+        document.getElementById('database').value = savedConfig.database || '';
+        document.getElementById('jobDatabase').value = savedConfig.jobDatabase || '';
+
+        if (savedConfig.options?.trustedConnection) {
+          trustedConnectionCheckbox.checked = true;
+          credentialsSection.style.display = 'none';
+        } else {
+          document.getElementById('user').value = savedConfig.user || '';
+          // Password is not loaded for security
+        }
+      }
+    });
+
+    function showMessage(message, type) {
+      messageDiv.textContent = message;
+      messageDiv.className = `message ${type}`;
+      messageDiv.style.display = 'block';
+    }
+
+    function hideMessage() {
+      messageDiv.style.display = 'none';
+    }
+
+    function getFormData() {
+      const trustedConnection = trustedConnectionCheckbox.checked;
+
+      const config = {
+        server: document.getElementById('server').value.trim(),
+        port: parseInt(document.getElementById('port').value) || 1433,
+        database: document.getElementById('database').value.trim(),
+        jobDatabase: document.getElementById('jobDatabase').value.trim() || null,
+        options: {
+          encrypt: true,
+          trustServerCertificate: true,
+          trustedConnection: trustedConnection
+        }
+      };
+
+      // Only include user/password for SQL Server Authentication
+      if (!trustedConnection) {
+        config.user = document.getElementById('user').value.trim();
+        config.password = document.getElementById('password').value;
+      }
+      // Explicitly do NOT include user/password for Windows Authentication
+      // to avoid any confusion
+
+      console.log('Form config:', {
+        server: config.server,
+        database: config.database,
+        hasUser: !!config.user,
+        hasPassword: !!config.password,
+        trustedConnection: config.options.trustedConnection
+      });
+
+      return config;
+    }
+
+    // Test connection
+    testBtn.addEventListener('click', async () => {
+      hideMessage();
+
+      const config = getFormData();
+
+      // Basic validation
+      if (!config.server || !config.database) {
+        showMessage('Please fill in required fields', 'error');
+        return;
+      }
+
+      if (!config.options.trustedConnection && (!config.user || !config.password)) {
+        showMessage('Please enter username and password', 'error');
+        return;
+      }
+
+      // Disable button and show loading
+      testBtn.disabled = true;
+      testBtn.innerHTML = '<span class="spinner"></span>Testing...';
+
+      try {
+        const result = await ipcRenderer.invoke('db:test-connection', config);
+
+        if (result.success) {
+          showMessage('✓ Connection successful! You can now save and connect.', 'success');
+          saveBtn.disabled = false;
+        } else {
+          showMessage(`Connection failed: ${result.message}`, 'error');
+          saveBtn.disabled = true;
+        }
+      } catch (error) {
+        showMessage(`Error: ${error.message}`, 'error');
+        saveBtn.disabled = true;
+      } finally {
+        testBtn.disabled = false;
+        testBtn.innerHTML = 'Test Connection';
+      }
+    });
+
+    // Save and connect
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideMessage();
+
+      const config = getFormData();
+
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = '<span class="spinner"></span>Connecting...';
+
+      try {
+        const result = await ipcRenderer.invoke('db:save-connection', config);
+
+        if (result.success) {
+          showMessage('✓ Connected successfully! Loading application...', 'success');
+          // Window will close automatically when main window opens
+        } else {
+          showMessage(`Failed to connect: ${result.message}`, 'error');
+          saveBtn.disabled = false;
+          saveBtn.innerHTML = 'Save & Connect';
+        }
+      } catch (error) {
+        showMessage(`Error: ${error.message}`, 'error');
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = 'Save & Connect';
+      }
+    });
+  </script>
+</body>
+</html>

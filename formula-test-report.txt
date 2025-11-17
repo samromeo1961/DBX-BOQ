@@ -1,0 +1,1179 @@
+═══════════════════════════════════════════════════════
+         DATABUILD FORMULA TEST REPORT
+═══════════════════════════════════════════════════════
+
+Total Tests:     244
+Passed:          236
+Failed:          4
+Text Only:       4
+With Warnings:   225
+Success Rate:    98.3%
+
+───────────────────────────────────────────────────────
+FAILED TESTS:
+───────────────────────────────────────────────────────
+
+1. Formula: -[Qty*1.2.4/5.4rnd0]/5.4
+   Error: Syntax errors: Consecutive decimal points detected - missing operator?
+   Warnings: Consecutive decimal points detected - missing operator?
+
+2. Formula: -[Qty*2.55.4rnd0]/5.4
+   Error: Syntax errors: Consecutive decimal points detected - missing operator?
+   Warnings: Consecutive decimal points detected - missing operator?
+
+3. Formula: -[Qty*3.2.8/5.4rnd0]/5.4
+   Error: Syntax errors: Consecutive decimal points detected - missing operator?
+   Warnings: Consecutive decimal points detected - missing operator?
+
+4. Formula: [qty/*1/5.4Rnd0]/5.4
+   Error: Formula evaluation failed: Value expected (char 3)
+
+───────────────────────────────────────────────────────
+MISMATCHED RESULTS:
+───────────────────────────────────────────────────────
+
+1. Formula: [Qty*.018rnd1/5.4]/5.4
+   Expected: 0.625
+   Actual:   0
+   Diff:     -0.625000
+
+2. Formula: [Qty*.232rnd1/5.4]/5.4
+   Expected: 1.25
+   Actual:   0
+   Diff:     -1.250000
+
+3. Formula: [Qty*.29/5.4*1.05rnd1]/5.4 Framing for Eaves - (Inc 5% Wastage)
+   Expected: 1.6
+   Actual:   0.0537037037037037
+   Diff:     -1.546296
+
+4. Formula: [Qty*.296rnd1/5.4]/5.4
+   Expected: 1.6
+   Actual:   0
+   Diff:     -1.600000
+
+5. Formula: [Qty*.29rnd1/5.4]/5.4
+   Expected: 1.6
+   Actual:   0
+   Diff:     -1.600000
+
+6. Formula: [qty*.667Rnd1]/2.7
+   Expected: 1.8
+   Actual:   0.37037037037037035
+   Diff:     -1.429630
+
+7. Formula: [qty*.667Rnd1]/5.4
+   Expected: 3.6
+   Actual:   0.18518518518518517
+   Diff:     -3.414815
+
+8. Formula: [qty*0.223Rnd1]/5.4
+   Expected: 1.8
+   Actual:   0
+   Diff:     -1.800000
+
+9. Formula: [qty*0.389*2Rnd1]/5.4
+   Expected: 2
+   Actual:   0.14407407407407408
+   Diff:     -1.855926
+
+10. Formula: [qty*0.45Rnd1]/2.7
+   Expected: 1.8
+   Actual:   0
+   Diff:     -1.800000
+
+11. Formula: -[Qty*0.6/5.4rnd0]/5.4
+   Expected: -0.6
+   Actual:   -0.020576131687242795
+   Diff:     0.579424
+
+12. Formula: -[Qty*0.8/5.4rnd0]/5.4
+   Expected: -0.8
+   Actual:   -0.02743484224965706
+   Diff:     0.772565
+
+13. Formula: -[Qty*0.89/5.4rnd0]/5.4
+   Expected: -0.89
+   Actual:   -0.03052126200274348
+   Diff:     0.859479
+
+14. Formula: [qty*0.89Rnd1]/2.7
+   Expected: 2.4
+   Actual:   0.37037037037037035
+   Diff:     -2.029630
+
+15. Formula: [Qty*0.9/2.7rnd1]/2.7
+   Expected: 0.9
+   Actual:   0.1111111111111111
+   Diff:     -0.788889
+
+16. Formula: -[Qty*0.9/5.4rnd0]/5.4
+   Expected: -0.9
+   Actual:   -0.030864197530864192
+   Diff:     0.869136
+
+17. Formula: [Qty*1.0/5.4rnd0]/5.4
+   Expected: 1
+   Actual:   0.034293552812071325
+   Diff:     -0.965706
+
+18. Formula: -[Qty*1.0/5.4rnd0]/5.4
+   Expected: -1
+   Actual:   -0.034293552812071325
+   Diff:     0.965706
+
+19. Formula: [Qty*1.05/5.4rnd0]/5.4
+   Expected: 1.05
+   Actual:   0.03600823045267489
+   Diff:     -1.013992
+
+20. Formula: [Qty*1.05] meters - Eave Trim - (Inc 5% Wastage)
+   Expected: 0.194444
+   Actual:   1.05
+   Diff:     0.855556
+
+21. Formula: -[Qty*1.09/5.4rnd0]/5.4
+   Expected: -1.09
+   Actual:   -0.03737997256515775
+   Diff:     1.052620
+
+22. Formula: [qty*1.0Rnd1]/2.7
+   Expected: 2.7
+   Actual:   0.37037037037037035
+   Diff:     -2.329630
+
+23. Formula: [Qty*1.0rnd1]/5.4
+   Expected: 5.4
+   Actual:   0.18518518518518517
+   Diff:     -5.214815
+
+24. Formula: [Qty*1.1/5.4]/5.4
+   Expected: 1.1
+   Actual:   0.03772290809327846
+   Diff:     -1.062277
+
+25. Formula: [Qty*1.1/5.4rnd0]/5.4
+   Expected: 1.1
+   Actual:   0.03772290809327846
+   Diff:     -1.062277
+
+26. Formula: -[Qty*1.1/5.4rnd0]/5.4
+   Expected: -0.9
+   Actual:   -0.03772290809327846
+   Diff:     0.862277
+
+27. Formula: [Qty*1.1/5.4rnd1]/5.4
+   Expected: 1
+   Actual:   0.040740740740740744
+   Diff:     -0.959259
+
+28. Formula: [Qty*1.1rnd1]/5.4
+   Expected: 5.85
+   Actual:   0.18518518518518517
+   Diff:     -5.664815
+
+29. Formula: [Qty*1.2/5.4rnd0]/5.4
+   Expected: 1.2
+   Actual:   0.04115226337448559
+   Diff:     -1.158848
+
+30. Formula: -[Qty*1.2/5.4rnd0]/5.4
+   Expected: -1.2
+   Actual:   -0.04115226337448559
+   Diff:     1.158848
+
+31. Formula: -[Qty*1.3/5.4rnd0]/5.4
+   Expected: -1.3
+   Actual:   -0.044581618655692726
+   Diff:     1.255418
+
+32. Formula: -[Qty*1.4/5.4rnd0]/5.4
+   Expected: -1.4
+   Actual:   -0.048010973936899855
+   Diff:     1.351989
+
+33. Formula: [Qty*1.5/5.4rnd0]/5.4
+   Expected: 1.5
+   Actual:   0.051440329218106984
+   Diff:     -1.448560
+
+34. Formula: -[Qty*1.5/5.4rnd0]/5.4
+   Expected: -1.5
+   Actual:   -0.051440329218106984
+   Diff:     1.448560
+
+35. Formula: -[Qty*1.54/5.4rnd0]/5.4
+   Expected: -1.54
+   Actual:   -0.05281207133058984
+   Diff:     1.487188
+
+36. Formula: [Qty*1.6/5.4rnd0]/5.4
+   Expected: 1.6
+   Actual:   0.05486968449931412
+   Diff:     -1.545130
+
+37. Formula: -[Qty*1.6/5.4rnd0]/5.4
+   Expected: -1.6
+   Actual:   -0.05486968449931412
+   Diff:     1.545130
+
+38. Formula: [Qty*1.62/5.4rnd0]/5.4
+   Expected: 1.62
+   Actual:   0.05555555555555555
+   Diff:     -1.564444
+
+39. Formula: -[Qty*1.62/5.4rnd0]/5.4
+   Expected: -1.62
+   Actual:   -0.05555555555555555
+   Diff:     1.564444
+
+40. Formula: -[Qty*1.64/5.4rnd0]/5.4
+   Expected: -1.64
+   Actual:   -0.056241426611796964
+   Diff:     1.583759
+
+41. Formula: -[Qty*1.68/5.4rnd0]/5.4
+   Expected: -1.68
+   Actual:   -0.05761316872427982
+   Diff:     1.622387
+
+42. Formula: -[Qty*1.73/5.4rnd0]/5.4
+   Expected: -1.73
+   Actual:   -0.0593278463648834
+   Diff:     1.670672
+
+43. Formula: -[Qty*1.76/5.4rnd0]/5.4
+   Expected: -1.68
+   Actual:   -0.06035665294924553
+   Diff:     1.619643
+
+44. Formula: [Qty*1.8/5.4rnd0]/5.4
+   Expected: 1.8
+   Actual:   0.061728395061728385
+   Diff:     -1.738272
+
+45. Formula: -[Qty*1.8/5.4rnd0]/5.4
+   Expected: -1.8
+   Actual:   -0.061728395061728385
+   Diff:     1.738272
+
+46. Formula: -[Qty*1.82/5.4rnd0]/5.4
+   Expected: -1.82
+   Actual:   -0.06241426611796982
+   Diff:     1.757586
+
+47. Formula: -[Qty*1.84/5.4rnd0]/5.4
+   Expected: -1.84
+   Actual:   -0.06310013717421124
+   Diff:     1.776900
+
+48. Formula: [Qty*1.96/5.4rnd0]/5.4
+   Expected: 1.96
+   Actual:   0.0672153635116598
+   Diff:     -1.892785
+
+49. Formula: [Qty*1/2.7rnd0]/2.7
+   Expected: 1
+   Actual:   0.1371742112482853
+   Diff:     -0.862826
+
+50. Formula: [Qty*10.0/5.4rnd0]/5.4
+   Expected: 10
+   Actual:   0.34293552812071326
+   Diff:     -9.657064
+
+51. Formula: -[Qty*10.34/5.4rnd0]/5.4
+   Expected: -10.34
+   Actual:   -0.35459533607681754
+   Diff:     9.985405
+
+52. Formula: [Qty*10.4/5.4rnd0]/5.4
+   Expected: 10.4
+   Actual:   0.3566529492455418
+   Diff:     -10.043347
+
+53. Formula: [Qty*10.8/5.4rnd0]/5.4
+   Expected: 10.8
+   Actual:   0.37037037037037035
+   Diff:     -10.429630
+
+54. Formula: [Qty*10.8/5.4rnd1]/5.4
+   Expected: 10.8
+   Actual:   0.4
+   Diff:     -10.400000
+
+55. Formula: [Qty*10.88/5.4rnd1]/5.4
+   Expected: 10.88
+   Actual:   0.40296296296296297
+   Diff:     -10.477037
+
+56. Formula: [Qty*11.1/5.4rnd0]/5.4
+   Expected: 11.1
+   Actual:   0.3806584362139917
+   Diff:     -10.719342
+
+57. Formula: [Qty*11.1111/5.4rnd1]/5.4
+   Expected: 11.1111
+   Actual:   0.41152222222222223
+   Diff:     -10.699578
+
+58. Formula: [Qty*11.28/5.4rnd1]/5.4
+   Expected: 11.28
+   Actual:   0.4177777777777777
+   Diff:     -10.862222
+
+59. Formula: [Qty*11.3/5.4rnd0]/5.4
+   Expected: 11.3
+   Actual:   0.38751714677640603
+   Diff:     -10.912483
+
+60. Formula: [Qty*11.4/5.4rnd0]/5.4
+   Expected: 11.4
+   Actual:   0.39094650205761317
+   Diff:     -11.009053
+
+61. Formula: [Qty*11.4/5.4rnd1]/5.4
+   Expected: 11.4
+   Actual:   0.4222222222222222
+   Diff:     -10.977778
+
+62. Formula: [Qty*11.64/5.4rnd1]/5.4
+   Expected: 11.64
+   Actual:   0.4311111111111111
+   Diff:     -11.208889
+
+63. Formula: [Qty*12.2/5.4rnd0]/5.4
+   Expected: 12.2
+   Actual:   0.4183813443072702
+   Diff:     -11.781619
+
+64. Formula: [Qty*12.6/5.4rnd0]/5.4
+   Expected: 12.6
+   Actual:   0.4320987654320987
+   Diff:     -12.167901
+
+65. Formula: [Qty*13.0/5.4rnd0]/5.4
+   Expected: 13
+   Actual:   0.4458161865569273
+   Diff:     -12.554184
+
+66. Formula: -[Qty*13.2/5.4rnd0]/5.4
+   Expected: -13.2
+   Actual:   -0.4526748971193415
+   Diff:     12.747325
+
+67. Formula: [Qty*13.32/5.4rnd1]/5.4
+   Expected: 13.32
+   Actual:   0.49333333333333335
+   Diff:     -12.826667
+
+68. Formula: [Qty*14.16/5.4rnd1]/5.4
+   Expected: 14.16
+   Actual:   0.5244444444444444
+   Diff:     -13.635556
+
+69. Formula: [Qty*14.96/5.4rnd1]/5.4
+   Expected: 14.96
+   Actual:   0.554074074074074
+   Diff:     -14.405926
+
+70. Formula: [qty*1Rnd1]/5.4
+   Expected: 5.4
+   Actual:   0.18518518518518517
+   Diff:     -5.214815
+
+71. Formula: [Qty*2.0/5.4rnd0]/5.4
+   Expected: 2
+   Actual:   0.06858710562414265
+   Diff:     -1.931413
+
+72. Formula: -[Qty*2.0/5.4rnd0]/5.4
+   Expected: -2
+   Actual:   -0.06858710562414265
+   Diff:     1.931413
+
+73. Formula: -[Qty*2.04/5.4rnd0]/5.4
+   Expected: -2.04
+   Actual:   -0.0699588477366255
+   Diff:     1.970041
+
+74. Formula: -[Qty*2.08/5.4rnd0]/5.4
+   Expected: -2.08
+   Actual:   -0.07133058984910837
+   Diff:     2.008669
+
+75. Formula: [Qty*2.08rnd1]/5.4
+   Expected: 11.2
+   Actual:   0.37037037037037035
+   Diff:     -10.829630
+
+76. Formula: [Qty*2.0rnd1]/5.4
+   Expected: 10.8
+   Actual:   0.37037037037037035
+   Diff:     -10.429630
+
+77. Formula: [Qty*2.1/5.4rnd0]/5.4
+   Expected: 2.1
+   Actual:   0.07201646090534979
+   Diff:     -2.027984
+
+78. Formula: -[Qty*2.1/5.4rnd0]/5.4
+   Expected: -1.5
+   Actual:   -0.07201646090534979
+   Diff:     1.427984
+
+79. Formula: [Qty*2.17rnd1]/5.4
+   Expected: 10.8
+   Actual:   0.37037037037037035
+   Diff:     -10.429630
+
+80. Formula: -[Qty*2.18/5.4rnd0]/5.4
+   Expected: -1.6
+   Actual:   -0.0747599451303155
+   Diff:     1.525240
+
+81. Formula: [Qty*2.2/5.4rnd0]/5.4
+   Expected: 2.2
+   Actual:   0.07544581618655692
+   Diff:     -2.124554
+
+82. Formula: -[Qty*2.2/5.4rnd0]/5.4
+   Expected: -2.2
+   Actual:   -0.07544581618655692
+   Diff:     2.124554
+
+83. Formula: [Qty*2.23rnd1]/5.4
+   Expected: 12
+   Actual:   0.37037037037037035
+   Diff:     -11.629630
+
+84. Formula: [Qty*2.4/5.4rnd0]/5.4
+   Expected: 2.1
+   Actual:   0.08230452674897118
+   Diff:     -2.017695
+
+85. Formula: -[Qty*2.4/5.4rnd0]/5.4
+   Expected: -2.1
+   Actual:   -0.08230452674897118
+   Diff:     2.017695
+
+86. Formula: -[Qty*2.48/5.4rnd0]/5.4
+   Expected: -2.48
+   Actual:   -0.08504801097393688
+   Diff:     2.394952
+
+87. Formula: [Qty*2.5/5.4rnd0]/5.4
+   Expected: 2.5
+   Actual:   0.08573388203017832
+   Diff:     -2.414266
+
+88. Formula: [Qty*2.56/5.4rnd0]/5.4
+   Expected: 2.56
+   Actual:   0.0877914951989026
+   Diff:     -2.472209
+
+89. Formula: [Qty*2.56rnd1]/5.4
+   Expected: 13.8
+   Actual:   0.5555555555555555
+   Diff:     -13.244444
+
+90. Formula: [Qty*2.6/5.4rnd0]/5.4
+   Expected: 2.6
+   Actual:   0.08916323731138545
+   Diff:     -2.510837
+
+91. Formula: -[Qty*2.6/5.4rnd0]/5.4
+   Expected: -2.6
+   Actual:   -0.08916323731138545
+   Diff:     2.510837
+
+92. Formula: [Qty*2.7/5.4rnd0]/5.4
+   Expected: 2.7
+   Actual:   0.09259259259259259
+   Diff:     -2.607407
+
+93. Formula: -[Qty*2.7/5.4rnd0]/5.4
+   Expected: -2.7
+   Actual:   -0.09259259259259259
+   Diff:     2.607407
+
+94. Formula: [Qty*2.8/5.4rnd0]/5.4
+   Expected: 3
+   Actual:   0.09602194787379971
+   Diff:     -2.903978
+
+95. Formula: -[Qty*2.8/5.4rnd0]/5.4
+   Expected: -2.8
+   Actual:   -0.09602194787379971
+   Diff:     2.703978
+
+96. Formula: -[Qty*2.88/5.4rnd0]/5.4
+   Expected: -2.88
+   Actual:   -0.09876543209876543
+   Diff:     2.781235
+
+97. Formula: [Qty*3.0/5.4rnd0]/5.4
+   Expected: 3
+   Actual:   0.10288065843621397
+   Diff:     -2.897119
+
+98. Formula: -[Qty*3.0/5.4rnd0]/5.4
+   Expected: -3
+   Actual:   -0.10288065843621397
+   Diff:     2.897119
+
+99. Formula: -[Qty*3.03/5.4rnd0]/5.4
+   Expected: -3.03
+   Actual:   -0.1039094650205761
+   Diff:     2.926091
+
+100. Formula: -[Qty*3.08/5.4rnd0]/5.4
+   Expected: -3.08
+   Actual:   -0.10562414266117968
+   Diff:     2.974376
+
+101. Formula: [Qty*3.1/5.4rnd0]/5.4
+   Expected: 3.1
+   Actual:   0.10631001371742112
+   Diff:     -2.993690
+
+102. Formula: -[Qty*3.1/5.4rnd0]/5.4
+   Expected: -3.1
+   Actual:   -0.10631001371742112
+   Diff:     2.993690
+
+103. Formula: [Qty*3.2/5.4rnd0]/5.4
+   Expected: 3.2
+   Actual:   0.10973936899862824
+   Diff:     -3.090261
+
+104. Formula: -[Qty*3.2/5.4rnd0]/5.4
+   Expected: -3.2
+   Actual:   -0.10973936899862824
+   Diff:     3.090261
+
+105. Formula: -[Qty*3.24/5.4rnd0]/5.4
+   Expected: -3.24
+   Actual:   -0.1111111111111111
+   Diff:     3.128889
+
+106. Formula: -[Qty*3.28/5.4rnd0]/5.4
+   Expected: -3.28
+   Actual:   -0.11248285322359393
+   Diff:     3.167517
+
+107. Formula: [Qty*3.3/5.4rnd0]/5.4
+   Expected: 3.3
+   Actual:   0.11316872427983538
+   Diff:     -3.186831
+
+108. Formula: -[Qty*3.3/5.4rnd0]/5.4
+   Expected: -3.3
+   Actual:   -0.11316872427983538
+   Diff:     3.186831
+
+109. Formula: [Qty*3.4/5.4rnd0]/5.4
+   Expected: 3.4
+   Actual:   0.1165980795610425
+   Diff:     -3.283402
+
+110. Formula: -[Qty*3.4/5.4rnd0]/5.4
+   Expected: -3.4
+   Actual:   -0.1165980795610425
+   Diff:     3.283402
+
+111. Formula: -[Qty*3.45/5.4rnd0]/5.4
+   Expected: -1.3
+   Actual:   -0.11831275720164608
+   Diff:     1.181687
+
+112. Formula: -[Qty*3.48/5.4rnd0]/5.4
+   Expected: -3.48
+   Actual:   -0.11934156378600821
+   Diff:     3.360658
+
+113. Formula: [Qty*3.6/5.4rnd0]/5.4
+   Expected: 3.6
+   Actual:   0.12345679012345677
+   Diff:     -3.476543
+
+114. Formula: -[Qty*3.6/5.4rnd0]/5.4
+   Expected: -3.3
+   Actual:   -0.12345679012345677
+   Diff:     3.176543
+
+115. Formula: -[Qty*3.68/5.4rnd0]/5.4
+   Expected: -3.68
+   Actual:   -0.1262002743484225
+   Diff:     3.553800
+
+116. Formula: -[Qty*3.72/5.4rnd0]/5.4
+   Expected: -3.72
+   Actual:   -0.12757201646090535
+   Diff:     3.592428
+
+117. Formula: [Qty*3.8/5.4rnd0]/5.4
+   Expected: 3.8
+   Actual:   0.13031550068587103
+   Diff:     -3.669684
+
+118. Formula: -[Qty*3.8/5.4rnd0]/5.4
+   Expected: -3.8
+   Actual:   -0.13031550068587103
+   Diff:     3.669684
+
+119. Formula: -[Qty*3.9/5.4rnd0]/5.4
+   Expected: -3.9
+   Actual:   -0.1337448559670782
+   Diff:     3.766255
+
+120. Formula: [Qty*4.0/5.4rnd0]/5.4
+   Expected: 4
+   Actual:   0.1371742112482853
+   Diff:     -3.862826
+
+121. Formula: -[Qty*4.0/5.4rnd0]/5.4
+   Expected: -4
+   Actual:   -0.1371742112482853
+   Diff:     3.862826
+
+122. Formula: -[Qty*4.08/5.4rnd0]/5.4
+   Expected: -4.08
+   Actual:   -0.139917695473251
+   Diff:     3.940082
+
+123. Formula: [Qty*4.1/5.4rnd0]/5.4
+   Expected: 4.1
+   Actual:   0.14060356652949244
+   Diff:     -3.959396
+
+124. Formula: -[Qty*4.1/5.4rnd0]/5.4
+   Expected: -4.1
+   Actual:   -0.14060356652949244
+   Diff:     3.959396
+
+125. Formula: [Qty*4.2/5.4rnd0]/5.4
+   Expected: 2
+   Actual:   0.14403292181069957
+   Diff:     -1.855967
+
+126. Formula: -[Qty*4.2/5.4rnd0]/5.4
+   Expected: -4.2
+   Actual:   -0.14403292181069957
+   Diff:     4.055967
+
+127. Formula: -[Qty*4.32/5.4rnd0]/5.4
+   Expected: -4.32
+   Actual:   -0.14814814814814814
+   Diff:     4.171852
+
+128. Formula: [Qty*4.4/5.4rnd0]/5.4
+   Expected: 4.4
+   Actual:   0.15089163237311384
+   Diff:     -4.249108
+
+129. Formula: -[Qty*4.4/5.4rnd0]/5.4
+   Expected: -4.4
+   Actual:   -0.15089163237311384
+   Diff:     4.249108
+
+130. Formula: [Qty*4.5/5.4rnd0]/5.4
+   Expected: 4.5
+   Actual:   0.15432098765432095
+   Diff:     -4.345679
+
+131. Formula: -[Qty*4.5/5.4rnd0]/5.4
+   Expected: -4.5
+   Actual:   -0.15432098765432095
+   Diff:     4.345679
+
+132. Formula: -[Qty*4.54/5.4rnd0]/5.4
+   Expected: -4.54
+   Actual:   -0.15569272976680382
+   Diff:     4.384307
+
+133. Formula: [Qty*4.6/5.4rnd0]/5.4
+   Expected: 4.6
+   Actual:   0.1577503429355281
+   Diff:     -4.442250
+
+134. Formula: -[Qty*4.6/5.4rnd0]/5.4
+   Expected: -4.6
+   Actual:   -0.1577503429355281
+   Diff:     4.442250
+
+135. Formula: [Qty*4.7/5.4rnd0]/5.4
+   Expected: 4.7
+   Actual:   0.16117969821673525
+   Diff:     -4.538820
+
+136. Formula: -[Qty*4.7/5.4rnd0]/5.4
+   Expected: -4.7
+   Actual:   -0.16117969821673525
+   Diff:     4.538820
+
+137. Formula: [Qty*4.8/5.4rnd0]/5.4
+   Expected: 4.8
+   Actual:   0.16460905349794236
+   Diff:     -4.635391
+
+138. Formula: -[Qty*4.8/5.4rnd0]/5.4
+   Expected: -4.8
+   Actual:   -0.16460905349794236
+   Diff:     4.635391
+
+139. Formula: -[Qty*4.85/5.4rnd0]/5.4
+   Expected: -4.85
+   Actual:   -0.16632373113854593
+   Diff:     4.683676
+
+140. Formula: -[Qty*4.92/5.4rnd0]/5.4
+   Expected: -4.92
+   Actual:   -0.1687242798353909
+   Diff:     4.751276
+
+141. Formula: [Qty*5.0/5.4rnd0]/5.4
+   Expected: 5
+   Actual:   0.17146776406035663
+   Diff:     -4.828532
+
+142. Formula: -[Qty*5.0/5.4rnd0]/5.4
+   Expected: -5
+   Actual:   -0.17146776406035663
+   Diff:     4.828532
+
+143. Formula: -[Qty*5.1/5.4rnd0]/5.4
+   Expected: -5.1
+   Actual:   -0.17489711934156374
+   Diff:     4.925103
+
+144. Formula: -[Qty*5.17/5.4rnd0]/5.4
+   Expected: -5.17
+   Actual:   -0.17729766803840877
+   Diff:     4.992702
+
+145. Formula: [Qty*5.2/5.4rnd0]/5.4
+   Expected: 5.2
+   Actual:   0.1783264746227709
+   Diff:     -5.021674
+
+146. Formula: -[Qty*5.2/5.4rnd0]/5.4
+   Expected: -5.2
+   Actual:   -0.1783264746227709
+   Diff:     5.021674
+
+147. Formula: [Qty*5.4/5.4rnd0]/5.4
+   Expected: 5.4
+   Actual:   0.18518518518518517
+   Diff:     -5.214815
+
+148. Formula: -[Qty*5.4/5.4rnd0]/5.4
+   Expected: -5.4
+   Actual:   -0.18518518518518517
+   Diff:     5.214815
+
+149. Formula: [Qty*5.6/5.4rnd0]/5.4
+   Expected: 5.2
+   Actual:   0.19204389574759942
+   Diff:     -5.007956
+
+150. Formula: [Qty*5.7/5.4rnd0]/5.4
+   Expected: 5.7
+   Actual:   0.19547325102880658
+   Diff:     -5.504527
+
+151. Formula: -[Qty*5.7/5.4rnd0]/5.4
+   Expected: -5.7
+   Actual:   -0.19547325102880658
+   Diff:     5.504527
+
+152. Formula: -[Qty*5.76/5.4rnd0]/5.4
+   Expected: -5.76
+   Actual:   -0.19753086419753085
+   Diff:     5.562469
+
+153. Formula: [Qty*5.8/5.4rnd0]/5.4
+   Expected: 5.8
+   Actual:   0.1989026063100137
+   Diff:     -5.601097
+
+154. Formula: -[Qty*5.8/5.4rnd0]/5.4
+   Expected: -5.8
+   Actual:   -0.1989026063100137
+   Diff:     5.601097
+
+155. Formula: [Qty*6.0/5.4rnd0]/5.4
+   Expected: 6
+   Actual:   0.20576131687242794
+   Diff:     -5.794239
+
+156. Formula: -[Qty*6.0/5.4rnd0]/5.4
+   Expected: -6
+   Actual:   -0.20576131687242794
+   Diff:     5.794239
+
+157. Formula: [Qty*6.2/5.4rnd0]/5.4
+   Expected: 6.2
+   Actual:   0.21262002743484223
+   Diff:     -5.987380
+
+158. Formula: [Qty*6.3/5.4rnd0]/5.4
+   Expected: 6.3
+   Actual:   0.21604938271604934
+   Diff:     -6.083951
+
+159. Formula: [Qty*6.4/5.4rnd0]/5.4
+   Expected: 6.4
+   Actual:   0.21947873799725648
+   Diff:     -6.180521
+
+160. Formula: -[Qty*6.4/5.4rnd0]/5.4
+   Expected: -6.4
+   Actual:   -0.21947873799725648
+   Diff:     6.180521
+
+161. Formula: -[Qty*6.56/5.4rnd0]/5.4
+   Expected: -6.56
+   Actual:   -0.22496570644718786
+   Diff:     6.335034
+
+162. Formula: [Qty*6.6/5.4rnd0]/5.4
+   Expected: 6.6
+   Actual:   0.22633744855967075
+   Diff:     -6.373663
+
+163. Formula: -[Qty*6.6/5.4rnd0]/5.4
+   Expected: -6.6
+   Actual:   -0.22633744855967075
+   Diff:     6.373663
+
+164. Formula: [Qty*6.8/5.4rnd0]/5.4
+   Expected: 6.8
+   Actual:   0.233196159122085
+   Diff:     -6.566804
+
+165. Formula: -[Qty*6.8/5.4rnd0]/5.4
+   Expected: -6.8
+   Actual:   -0.233196159122085
+   Diff:     6.566804
+
+166. Formula: [Qty*6.9/5.4rnd0]/5.4
+   Expected: 6.9
+   Actual:   0.23662551440329216
+   Diff:     -6.663374
+
+167. Formula: [Qty*7.0/5.4rnd0]/5.4
+   Expected: 7
+   Actual:   0.2400548696844993
+   Diff:     -6.759945
+
+168. Formula: [Qty*7.2/5.4rnd0]/5.4
+   Expected: 7.2
+   Actual:   0.24691358024691354
+   Diff:     -6.953086
+
+169. Formula: -[Qty*7.2/5.4rnd0]/5.4
+   Expected: -7.2
+   Actual:   -0.24691358024691354
+   Diff:     6.953086
+
+170. Formula: -[Qty*7.26/5.4rnd0]/5.4
+   Expected: -7.26
+   Actual:   -0.2489711934156378
+   Diff:     7.011029
+
+171. Formula: [Qty*7.3/5.4rnd0]/5.4
+   Expected: 7.3
+   Actual:   0.25034293552812065
+   Diff:     -7.049657
+
+172. Formula: [Qty*7.4/5.4rnd0]/5.4
+   Expected: 7.4
+   Actual:   0.2537722908093278
+   Diff:     -7.146228
+
+173. Formula: [Qty*7.5/5.4rnd0]/5.4
+   Expected: 7.5
+   Actual:   0.257201646090535
+   Diff:     -7.242798
+
+174. Formula: [Qty*7.6/5.4rnd0]/5.4
+   Expected: 7.6
+   Actual:   0.26063100137174205
+   Diff:     -7.339369
+
+175. Formula: [Qty*7.8/5.4rnd0]/5.4
+   Expected: 7.8
+   Actual:   0.2674897119341564
+   Diff:     -7.532510
+
+176. Formula: -[Qty*7.82/5.4rnd0]/5.4
+   Expected: -7.82
+   Actual:   -0.2681755829903978
+   Diff:     7.551824
+
+177. Formula: [Qty*8.0/5.4rnd0]/5.4
+   Expected: 8
+   Actual:   0.2743484224965706
+   Diff:     -7.725652
+
+178. Formula: -[Qty*8.0/5.4rnd0]/5.4
+   Expected: -8
+   Actual:   -0.2743484224965706
+   Diff:     7.725652
+
+179. Formula: [Qty*8.2/5.4rnd0]/5.4
+   Expected: 8.2
+   Actual:   0.28120713305898487
+   Diff:     -7.918793
+
+180. Formula: [Qty*8.3/5.4rnd0]/5.4
+   Expected: 8.3
+   Actual:   0.284636488340192
+   Diff:     -8.015364
+
+181. Formula: [Qty*8.4/5.4rnd0]/5.4
+   Expected: 8.4
+   Actual:   0.28806584362139914
+   Diff:     -8.111934
+
+182. Formula: [Qty*8.7/5.4rnd0]/5.4
+   Expected: 8.7
+   Actual:   0.29835390946502055
+   Diff:     -8.401646
+
+183. Formula: [Qty*9.0/5.4rnd0]/5.4
+   Expected: 9
+   Actual:   0.3086419753086419
+   Diff:     -8.691358
+
+184. Formula: [Qty*9.6/5.4rnd0]/5.4
+   Expected: 9.6
+   Actual:   0.3292181069958847
+   Diff:     -9.270782
+
+185. Formula: [Qty/2.7rnd1]/2.7
+   Expected: 1
+   Actual:   0.12345679012345677
+   Diff:     -0.876543
+
+186. Formula: [Qty/5.4rnd1]/5.4
+   Expected: 1
+   Actual:   0.037037037037037035
+   Diff:     -0.962963
+
+187. Formula: 1/0.9
+   Expected: 0.9
+   Actual:   1.1111111111111112
+   Diff:     0.211111
+
+188. Formula: 1/0.90
+   Expected: 0.9
+   Actual:   1.1111111111111112
+   Diff:     0.211111
+
+189. Formula: 1/1.2
+   Expected: 1.2
+   Actual:   0.8333333333333334
+   Diff:     -0.366667
+
+190. Formula: 1/1.20
+   Expected: 1.2
+   Actual:   0.8333333333333334
+   Diff:     -0.366667
+
+191. Formula: 1/1.5
+   Expected: 1.5
+   Actual:   0.6666666666666666
+   Diff:     -0.833333
+
+192. Formula: 1/1.50
+   Expected: 1.5
+   Actual:   0.6666666666666666
+   Diff:     -0.833333
+
+193. Formula: 1/1.8
+   Expected: 1.8
+   Actual:   0.5555555555555556
+   Diff:     -1.244444
+
+194. Formula: 1/1.80
+   Expected: 1.8
+   Actual:   0.5555555555555556
+   Diff:     -1.244444
+
+195. Formula: 1/2.1
+   Expected: 2.1
+   Actual:   0.47619047619047616
+   Diff:     -1.623810
+
+196. Formula: 1/2.10
+   Expected: 2.1
+   Actual:   0.47619047619047616
+   Diff:     -1.623810
+
+197. Formula: 1/2.40
+   Expected: 2.4
+   Actual:   0.4166666666666667
+   Diff:     -1.983333
+
+198. Formula: 1/2.7
+   Expected: 2.7
+   Actual:   0.37037037037037035
+   Diff:     -2.329630
+
+199. Formula: 1/3.0
+   Expected: 3
+   Actual:   0.3333333333333333
+   Diff:     -2.666667
+
+200. Formula: 1/3.3
+   Expected: 3.3
+   Actual:   0.30303030303030304
+   Diff:     -2.996970
+
+201. Formula: 1/3.6
+   Expected: 3.6
+   Actual:   0.2777777777777778
+   Diff:     -3.322222
+
+202. Formula: 1/3.9
+   Expected: 3.9
+   Actual:   0.25641025641025644
+   Diff:     -3.643590
+
+203. Formula: 1/4.2
+   Expected: 4.2
+   Actual:   0.23809523809523808
+   Diff:     -3.961905
+
+204. Formula: 1/4.5
+   Expected: 4.5
+   Actual:   0.2222222222222222
+   Diff:     -4.277778
+
+205. Formula: 1/4.8
+   Expected: 4.8
+   Actual:   0.20833333333333334
+   Diff:     -4.591667
+
+206. Formula: 1/5.1
+   Expected: 5.1
+   Actual:   0.19607843137254904
+   Diff:     -4.903922
+
+207. Formula: 1/5.4
+   Expected: 5.4
+   Actual:   0.18518518518518517
+   Diff:     -5.214815
+
+208. Formula: 1/5.7
+   Expected: 5.7
+   Actual:   0.17543859649122806
+   Diff:     -5.524561
+
+209. Formula: 1/6.0
+   Expected: 6
+   Actual:   0.16666666666666666
+   Diff:     -5.833333
+
+210. Formula: 2/2.1
+   Expected: 4.2
+   Actual:   0.9523809523809523
+   Diff:     -3.247619
+
+211. Formula: 2/2.1
+   Expected: 1
+   Actual:   0.9523809523809523
+   Diff:     -0.047619
+
+212. Formula: 2/2.1
+   Expected: 1
+   Actual:   0.9523809523809523
+   Diff:     -0.047619
+
+213. Formula: 2/2.1
+   Expected: 1
+   Actual:   0.9523809523809523
+   Diff:     -0.047619
+
+214. Formula: 2/2.1
+   Expected: 1
+   Actual:   0.9523809523809523
+   Diff:     -0.047619
+
+215. Formula: 2/2.1
+   Expected: 6.6
+   Actual:   0.9523809523809523
+   Diff:     -5.647619
+
+216. Formula: 2/2.4
+   Expected: 4.8
+   Actual:   0.8333333333333334
+   Diff:     -3.966667
+
+217. Formula: 2/2.4
+   Expected: 1
+   Actual:   0.8333333333333334
+   Diff:     -0.166667
+
+218. Formula: 2/2.4
+   Expected: 1
+   Actual:   0.8333333333333334
+   Diff:     -0.166667
+
+219. Formula: 2/2.4
+   Expected: 1
+   Actual:   0.8333333333333334
+   Diff:     -0.166667
+
+220. Formula: 2/2.4
+   Expected: 1
+   Actual:   0.8333333333333334
+   Diff:     -0.166667
+
+221. Formula: 2/2.7
+   Expected: 5.4
+   Actual:   0.7407407407407407
+   Diff:     -4.659259
+
+222. Formula: 5/3.6
+   Expected: 9.6
+   Actual:   1.3888888888888888
+   Diff:     -8.211111
+
+───────────────────────────────────────────────────────
+SAMPLE SUCCESSFUL CALCULATIONS (first 10):
+───────────────────────────────────────────────────────
+
+1. 0
+   Result: 0
+
+2. [(Qty/Qty)*1]/[Qty]
+   Result: 1 (Expected: 1 ✓)
+
+3. [(Qty/Qty)*4]/[Qty]
+   Result: 4 (Expected: 4 ✓)
+
+4. [Qty*.018rnd1/5.4]/5.4
+   Result: 0 (Expected: 0.625 ✗)
+
+5. [Qty*.232rnd1/5.4]/5.4
+   Result: 0 (Expected: 1.25 ✗)
+
+6. [Qty*.29/5.4*1.05rnd1]/5.4 Framing for Eaves - (Inc 5% Wastage)
+   Result: 0.0537037037037037 (Expected: 1.6 ✗)
+
+7. [Qty*.296rnd1/5.4]/5.4
+   Result: 0 (Expected: 1.6 ✗)
+
+8. [Qty*.29rnd1/5.4]/5.4
+   Result: 0 (Expected: 1.6 ✗)
+
+9. [qty*.667Rnd1]/2.7
+   Result: 0.37037037037037035 (Expected: 1.8 ✗)
+
+10. [qty*.667Rnd1]/5.4
+   Result: 0.18518518518518517 (Expected: 3.6 ✗)
+
+═══════════════════════════════════════════════════════
