@@ -41,43 +41,54 @@
         </div>
 
         <!-- Item Details Tabs -->
-        <div v-if="selectedItemCode" class="item-details-section border-top">
-          <!-- Tab Navigation -->
-          <ul class="nav nav-tabs" role="tablist">
-            <li class="nav-item">
-              <button
-                class="nav-link"
-                :class="{ active: activeTab === 'prices' }"
-                @click="activeTab = 'prices'"
-                type="button"
-              >
-                <i class="bi bi-truck me-1"></i>
-                Supplier Prices
-              </button>
-            </li>
-            <li class="nav-item">
-              <button
-                class="nav-link"
-                :class="{ active: activeTab === 'template' }"
-                @click="activeTab = 'template'"
-                type="button"
-              >
-                <i class="bi bi-file-text me-1"></i>
-                Template
-              </button>
-            </li>
-            <li class="nav-item">
-              <button
-                class="nav-link"
-                :class="{ active: activeTab === 'specification' }"
-                @click="activeTab = 'specification'"
-                type="button"
-              >
-                <i class="bi bi-file-earmark-text me-1"></i>
-                Specification
-              </button>
-            </li>
-          </ul>
+        <Transition name="slide-up">
+          <div v-if="selectedItemCode && !isPanelCollapsed" class="item-details-section border-top">
+            <!-- Tab Navigation with Close Button -->
+            <ul class="nav nav-tabs" role="tablist">
+              <li class="nav-item">
+                <button
+                  class="nav-link"
+                  :class="{ active: activeTab === 'prices' }"
+                  @click="activeTab = 'prices'"
+                  type="button"
+                >
+                  <i class="bi bi-truck me-1"></i>
+                  Supplier Prices
+                </button>
+              </li>
+              <li class="nav-item">
+                <button
+                  class="nav-link"
+                  :class="{ active: activeTab === 'template' }"
+                  @click="activeTab = 'template'"
+                  type="button"
+                >
+                  <i class="bi bi-file-text me-1"></i>
+                  Template
+                </button>
+              </li>
+              <li class="nav-item">
+                <button
+                  class="nav-link"
+                  :class="{ active: activeTab === 'specification' }"
+                  @click="activeTab = 'specification'"
+                  type="button"
+                >
+                  <i class="bi bi-file-earmark-text me-1"></i>
+                  Specification
+                </button>
+              </li>
+              <li class="nav-item ms-auto">
+                <button
+                  class="nav-link text-danger"
+                  @click="closePanel"
+                  type="button"
+                  title="Close panel"
+                >
+                  <i class="bi bi-x-lg"></i>
+                </button>
+              </li>
+            </ul>
 
           <!-- Tab Content -->
           <div class="tab-content">
@@ -100,6 +111,19 @@
               />
             </div>
           </div>
+          </div>
+        </Transition>
+
+        <!-- Expand Button (shown when panel is collapsed but item is selected) -->
+        <div v-if="selectedItemCode && isPanelCollapsed" class="expand-panel-bar border-top bg-light">
+          <button
+            class="btn btn-sm btn-link text-decoration-none w-100 py-2"
+            @click="isPanelCollapsed = false"
+          >
+            <i class="bi bi-chevron-up me-2"></i>
+            Show Details for {{ selectedItemCode }}
+            <i class="bi bi-chevron-up ms-2"></i>
+          </button>
         </div>
       </div>
     </div>
@@ -199,6 +223,7 @@ export default {
     const catalogueGridRef = ref(null);
     const selectedItemCode = ref(null);
     const activeTab = ref('prices');
+    const isPanelCollapsed = ref(false);
 
     // Computed - Just pass through the items from backend (backend does all filtering)
     const filteredItems = computed(() => catalogueItems.value);
@@ -421,9 +446,14 @@ export default {
       if (event && event.data && event.data.PriceCode) {
         selectedItemCode.value = event.data.PriceCode;
         activeTab.value = 'prices'; // Default to prices tab
+        isPanelCollapsed.value = false; // Expand panel when new item selected
       } else {
         selectedItemCode.value = null;
       }
+    }
+
+    function closePanel() {
+      isPanelCollapsed.value = true;
     }
 
     // Watchers
@@ -477,6 +507,7 @@ export default {
       catalogueGridRef,
       selectedItemCode,
       activeTab,
+      isPanelCollapsed,
       loadCatalogue,
       onCellValueChanged,
       onDeleteItems,
@@ -487,7 +518,8 @@ export default {
       onArchiveItems,
       onUnarchiveItems,
       clearGridFilters,
-      onItemSelected
+      onItemSelected,
+      closePanel
     };
   }
 };
@@ -557,5 +589,40 @@ export default {
 .item-details-section .tab-pane {
   height: 100%;
   overflow-y: auto;
+}
+
+/* Slide-up animation */
+.slide-up-enter-active {
+  animation: slide-up 0.4s ease-out;
+}
+
+.slide-up-leave-active {
+  animation: slide-up 0.3s ease-in reverse;
+}
+
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.expand-panel-bar {
+  padding: 0;
+  border-top: 2px solid #0d6efd;
+}
+
+.expand-panel-bar button {
+  color: #0d6efd;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.expand-panel-bar button:hover {
+  background-color: #e7f1ff;
 }
 </style>
