@@ -60,9 +60,10 @@ async function getCatalogueItems(params) {
       LEFT JOIN ${costCentresTable} cc ON pl.CostCentre = cc.Code AND cc.Tier = 1
       LEFT JOIN ${perCodesTable} pc ON pl.PerCode = pc.Code
       LEFT JOIN (
-        SELECT PriceCode, Price
+        SELECT PriceCode, MAX(Price) AS Price
         FROM ${pricesTable}
         WHERE PriceLevel = @priceLevel
+        GROUP BY PriceCode
       ) p ON pl.PriceCode = p.PriceCode
       LEFT JOIN (
         SELECT DISTINCT Main_Item AS PriceCode
@@ -189,9 +190,10 @@ async function getCatalogueItem(priceCode, priceLevel = 1) {
       LEFT JOIN ${costCentresTable} cc ON pl.CostCentre = cc.Code AND cc.Tier = 1
       LEFT JOIN ${perCodesTable} pc ON pl.PerCode = pc.Code
       LEFT JOIN (
-        SELECT PriceCode, Price
+        SELECT PriceCode, MAX(Price) AS Price
         FROM ${pricesTable}
         WHERE PriceLevel = @priceLevel
+        GROUP BY PriceCode
       ) p ON pl.PriceCode = p.PriceCode
       LEFT JOIN (
         SELECT DISTINCT Main_Item AS PriceCode
@@ -355,11 +357,11 @@ async function getAllCatalogueItems(params = {}) {
         pl.Archived
       FROM ${priceListTable} pl
       LEFT JOIN ${perCodesTable} pc ON pl.PerCode = pc.Code
-      LEFT JOIN (SELECT PriceCode, Price FROM ${pricesTable} WHERE PriceLevel = 1) p1 ON pl.PriceCode = p1.PriceCode
-      LEFT JOIN (SELECT PriceCode, Price FROM ${pricesTable} WHERE PriceLevel = 2) p2 ON pl.PriceCode = p2.PriceCode
-      LEFT JOIN (SELECT PriceCode, Price FROM ${pricesTable} WHERE PriceLevel = 3) p3 ON pl.PriceCode = p3.PriceCode
-      LEFT JOIN (SELECT PriceCode, Price FROM ${pricesTable} WHERE PriceLevel = 4) p4 ON pl.PriceCode = p4.PriceCode
-      LEFT JOIN (SELECT PriceCode, Price FROM ${pricesTable} WHERE PriceLevel = 5) p5 ON pl.PriceCode = p5.PriceCode
+      LEFT JOIN (SELECT PriceCode, MAX(Price) AS Price FROM ${pricesTable} WHERE PriceLevel = 1 GROUP BY PriceCode) p1 ON pl.PriceCode = p1.PriceCode
+      LEFT JOIN (SELECT PriceCode, MAX(Price) AS Price FROM ${pricesTable} WHERE PriceLevel = 2 GROUP BY PriceCode) p2 ON pl.PriceCode = p2.PriceCode
+      LEFT JOIN (SELECT PriceCode, MAX(Price) AS Price FROM ${pricesTable} WHERE PriceLevel = 3 GROUP BY PriceCode) p3 ON pl.PriceCode = p3.PriceCode
+      LEFT JOIN (SELECT PriceCode, MAX(Price) AS Price FROM ${pricesTable} WHERE PriceLevel = 4 GROUP BY PriceCode) p4 ON pl.PriceCode = p4.PriceCode
+      LEFT JOIN (SELECT PriceCode, MAX(Price) AS Price FROM ${pricesTable} WHERE PriceLevel = 5 GROUP BY PriceCode) p5 ON pl.PriceCode = p5.PriceCode
       LEFT JOIN (
         SELECT DISTINCT Main_Item AS PriceCode
         FROM ${recipeTable}
@@ -1050,6 +1052,698 @@ async function deleteRecipeComponent(mainItem, subItem) {
   }
 }
 
+/**
+ * Get estimate prices for a catalogue item (current + history)
+ * @param {string} priceCode - Catalogue item code
+ */
+async function getEstimatePrices(priceCode) {
+  try {
+    const pool = getPool();
+    if (!pool) {
+      return {
+        success: false,
+        message: 'Database not connected',
+        data: { current: {}, history: [] }
+      };
+    }
+
+    const dbConfig = credentialsStore.getCredentials();
+    if (!dbConfig) {
+      return {
+        success: false,
+        message: 'No database configuration found',
+        data: { current: {}, history: [] }
+      };
+    }
+
+    const pricesTable = qualifyTable('Prices', dbConfig);
+    const priceListTable = qualifyTable('PriceList', dbConfig);
+
+    // Get current prices (most recent for each level)
+    const currentQuery = `
+      SELECT
+        PriceCode,
+        MAX(CASE WHEN PriceLevel = 1 THEN Price ELSE NULL END) AS Price1,
+        MAX(CASE WHEN PriceLevel = 2 THEN Price ELSE NULL END) AS Price2,
+        MAX(CASE WHEN PriceLevel = 3 THEN Price ELSE NULL END) AS Price3,
+        MAX(CASE WHEN PriceLevel = 4 THEN Price ELSE NULL END) AS Price4,
+        MAX(CASE WHEN PriceLevel = 5 THEN Price ELSE NULL END) AS Price5
+      FROM (
+        SELECT
+          PriceCode,
+          PriceLevel,
+          Price,
+          ROW_NUMBER() OVER (PARTITION BY PriceCode, PriceLevel ORDER BY Date DESC) AS rn
+        FROM ${pricesTable}
+        WHERE PriceCode = @priceCode
+      ) AS LatestPrices
+      WHERE rn = 1
+      GROUP BY PriceCode
+    `;
+
+    const currentResult = await pool.request()
+      .input('priceCode', priceCode)
+      .query(currentQuery);
+
+    const current = currentResult.recordset.length > 0
+      ? currentResult.recordset[0]
+      : { Price1: 0, Price2: 0, Price3: 0, Price4: 0, Price5: 0 };
+
+    // Check if optional columns exist
+    const dbName = dbConfig.database;
+    const checkOptionalColumns = await pool.request().query(`
+      SELECT COLUMN_NAME
+      FROM [${dbName}].INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_NAME = 'Prices'
+        AND TABLE_SCHEMA = 'dbo'
+        AND COLUMN_NAME IN ('Estimator', 'Notes', 'CreatedDate')
+    `);
+
+    const hasEstimator = checkOptionalColumns.recordset.some(c => c.COLUMN_NAME === 'Estimator');
+    const hasNotes = checkOptionalColumns.recordset.some(c => c.COLUMN_NAME === 'Notes');
+    const hasCreatedDate = checkOptionalColumns.recordset.some(c => c.COLUMN_NAME === 'CreatedDate');
+
+    // Build query with optional columns
+    const historyQuery = `
+      SELECT
+        p.PriceCode,
+        p.PriceLevel,
+        p.Price,
+        p.Date AS ValidFrom
+        ${hasEstimator ? ', p.Estimator' : ', NULL AS Estimator'}
+        ${hasNotes ? ', p.Notes' : ', NULL AS Notes'}
+        ${hasCreatedDate ? ', p.CreatedDate' : ', NULL AS CreatedDate'}
+      FROM ${pricesTable} p
+      WHERE p.PriceCode = @priceCode
+      ORDER BY p.PriceLevel, p.Date DESC
+    `;
+
+    const historyResult = await pool.request()
+      .input('priceCode', priceCode)
+      .query(historyQuery);
+
+    return {
+      success: true,
+      data: {
+        current,
+        history: historyResult.recordset
+      }
+    };
+
+  } catch (error) {
+    console.error('Error getting estimate prices:', error);
+    return {
+      success: false,
+      message: error.message,
+      data: { current: {}, history: [] }
+    };
+  }
+}
+
+/**
+ * Add a new estimate price
+ * @param {Object} data - { itemCode, priceLevel, price, effectiveDate, estimator, notes }
+ */
+async function addEstimatePrice(data) {
+  try {
+    const pool = getPool();
+    if (!pool) {
+      return { success: false, message: 'Database not connected' };
+    }
+
+    const dbConfig = credentialsStore.getCredentials();
+    if (!dbConfig) {
+      return { success: false, message: 'No database configuration found' };
+    }
+
+    const { itemCode, priceLevel, price, validFrom, estimator, notes } = data;
+
+    const pricesTable = qualifyTable('Prices', dbConfig);
+    const dbName = dbConfig.database;
+
+    // Check if optional columns exist
+    const checkOptionalColumns = await pool.request().query(`
+      SELECT COLUMN_NAME
+      FROM [${dbName}].INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_NAME = 'Prices'
+        AND TABLE_SCHEMA = 'dbo'
+        AND COLUMN_NAME IN ('Estimator', 'Notes', 'CreatedDate')
+    `);
+
+    const hasEstimator = checkOptionalColumns.recordset.some(c => c.COLUMN_NAME === 'Estimator');
+    const hasNotes = checkOptionalColumns.recordset.some(c => c.COLUMN_NAME === 'Notes');
+    const hasCreatedDate = checkOptionalColumns.recordset.some(c => c.COLUMN_NAME === 'CreatedDate');
+
+    // Check if a price already exists for this code/level/date
+    const checkQuery = `
+      SELECT COUNT(*) as count
+      FROM ${pricesTable}
+      WHERE PriceCode = @itemCode
+        AND PriceLevel = @priceLevel
+        AND Date = @validFrom
+    `;
+
+    const checkResult = await pool.request()
+      .input('itemCode', itemCode)
+      .input('priceLevel', priceLevel)
+      .input('validFrom', validFrom)
+      .query(checkQuery);
+
+    if (checkResult.recordset[0].count > 0) {
+      return {
+        success: false,
+        message: 'A price already exists for this level and date'
+      };
+    }
+
+    // Build insert query based on available columns
+    const columns = ['PriceCode', 'PriceLevel', 'Price', 'Date'];
+    const values = ['@itemCode', '@priceLevel', '@price', '@validFrom'];
+    const request = pool.request()
+      .input('itemCode', itemCode)
+      .input('priceLevel', priceLevel)
+      .input('price', price)
+      .input('validFrom', validFrom);
+
+    if (hasEstimator) {
+      columns.push('Estimator');
+      values.push('@estimator');
+      request.input('estimator', estimator || null);
+    }
+
+    if (hasNotes) {
+      columns.push('Notes');
+      values.push('@notes');
+      request.input('notes', notes || null);
+    }
+
+    if (hasCreatedDate) {
+      columns.push('CreatedDate');
+      values.push('GETDATE()');
+    }
+
+    const insertQuery = `
+      INSERT INTO ${pricesTable} (${columns.join(', ')})
+      VALUES (${values.join(', ')})
+    `;
+
+    await request.query(insertQuery);
+
+    console.log(`✅ Added estimate price for ${itemCode}, Level ${priceLevel}`);
+
+    return { success: true, message: 'Estimate price added successfully' };
+
+  } catch (error) {
+    console.error('Error adding estimate price:', error);
+    return { success: false, message: error.message };
+  }
+}
+
+/**
+ * Update an estimate price
+ * @param {Object} data - { itemCode, priceLevel, price, validFrom, estimator, notes, originalPriceLevel, originalValidFrom }
+ */
+async function updateEstimatePrice(data) {
+  try {
+    const pool = getPool();
+    if (!pool) {
+      return { success: false, message: 'Database not connected' };
+    }
+
+    const dbConfig = credentialsStore.getCredentials();
+    if (!dbConfig) {
+      return { success: false, message: 'No database configuration found' };
+    }
+
+    const {
+      itemCode,
+      priceLevel,
+      price,
+      validFrom,
+      estimator,
+      notes,
+      originalPriceLevel,
+      originalValidFrom
+    } = data;
+
+    const pricesTable = qualifyTable('Prices', dbConfig);
+    const dbName = dbConfig.database;
+
+    // Check if optional columns exist
+    const checkOptionalColumns = await pool.request().query(`
+      SELECT COLUMN_NAME
+      FROM [${dbName}].INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_NAME = 'Prices'
+        AND TABLE_SCHEMA = 'dbo'
+        AND COLUMN_NAME IN ('Estimator', 'Notes')
+    `);
+
+    const hasEstimator = checkOptionalColumns.recordset.some(c => c.COLUMN_NAME === 'Estimator');
+    const hasNotes = checkOptionalColumns.recordset.some(c => c.COLUMN_NAME === 'Notes');
+
+    // Build update query based on available columns
+    const setClause = ['Price = @price'];
+    const request = pool.request()
+      .input('itemCode', itemCode)
+      .input('price', price)
+      .input('originalPriceLevel', originalPriceLevel)
+      .input('originalValidFrom', originalValidFrom);
+
+    if (hasEstimator) {
+      setClause.push('Estimator = @estimator');
+      request.input('estimator', estimator || null);
+    }
+
+    if (hasNotes) {
+      setClause.push('Notes = @notes');
+      request.input('notes', notes || null);
+    }
+
+    const updateQuery = `
+      UPDATE ${pricesTable}
+      SET ${setClause.join(', ')}
+      WHERE PriceCode = @itemCode
+        AND PriceLevel = @originalPriceLevel
+        AND Date = @originalValidFrom
+    `;
+
+    await request.query(updateQuery);
+
+    console.log(`✅ Updated estimate price for ${itemCode}, Level ${priceLevel}`);
+
+    return { success: true, message: 'Estimate price updated successfully' };
+
+  } catch (error) {
+    console.error('Error updating estimate price:', error);
+    return { success: false, message: error.message };
+  }
+}
+
+/**
+ * Delete an estimate price
+ * @param {string} priceCode - Item code
+ * @param {number} priceLevel - Price level
+ * @param {string} validFrom - Valid from date
+ */
+async function deleteEstimatePrice(priceCode, priceLevel, validFrom) {
+  try {
+    const pool = getPool();
+    if (!pool) {
+      return { success: false, message: 'Database not connected' };
+    }
+
+    const dbConfig = credentialsStore.getCredentials();
+    if (!dbConfig) {
+      return { success: false, message: 'No database configuration found' };
+    }
+
+    const pricesTable = qualifyTable('Prices', dbConfig);
+
+    const deleteQuery = `
+      DELETE FROM ${pricesTable}
+      WHERE PriceCode = @priceCode
+        AND PriceLevel = @priceLevel
+        AND Date = @validFrom
+    `;
+
+    await pool.request()
+      .input('priceCode', priceCode)
+      .input('priceLevel', priceLevel)
+      .input('validFrom', validFrom)
+      .query(deleteQuery);
+
+    console.log(`✅ Deleted estimate price for ${priceCode}, Level ${priceLevel}`);
+
+    return { success: true, message: 'Estimate price deleted successfully' };
+
+  } catch (error) {
+    console.error('Error deleting estimate price:', error);
+    return { success: false, message: error.message };
+  }
+}
+
+/**
+ * Get items matching bulk price change criteria with price data
+ *
+ * For estimate prices: Returns all 5 price levels from Prices table
+ * For supplier prices: Returns average price across suppliers (filtered by supplier if specified)
+ *
+ * @param {Object} criteria - Search criteria
+ * @param {string} criteria.priceType - 'estimate' or 'supplier'
+ * @param {string} criteria.costCentre - Optional cost centre filter
+ * @param {string} criteria.searchTerm - Optional search term (supports multi-word search)
+ * @param {Array<number>} criteria.priceLevels - Price levels to include (1-5)
+ * @param {boolean} criteria.excludeZeroPrices - Whether to exclude items with zero prices
+ * @param {string} criteria.supplier - Optional supplier filter (only for supplier prices)
+ *
+ * @returns {Promise<{success: boolean, data: Array, message?: string}>}
+ */
+async function getBulkPriceItems(criteria) {
+  try {
+    const pool = getPool();
+    if (!pool) {
+      return {
+        success: false,
+        message: 'Database not connected',
+        data: []
+      };
+    }
+
+    const dbConfig = credentialsStore.getCredentials();
+    if (!dbConfig) {
+      return {
+        success: false,
+        message: 'No database configuration found',
+        data: []
+      };
+    }
+
+    const {
+      priceType = 'estimate',
+      costCentre = '',
+      searchTerm = '',
+      priceLevels = [],
+      excludeZeroPrices = true,
+      supplier = ''
+    } = criteria;
+
+    const priceListTable = qualifyTable('PriceList', dbConfig);
+    const pricesTable = qualifyTable('Prices', dbConfig);
+    const supplierPricesTable = qualifyTable('SuppliersPrices', dbConfig);
+    const costCentresTable = qualifyTable('CostCentres', dbConfig);
+    const perCodesTable = qualifyTable('PerCodes', dbConfig);
+
+    let query;
+
+    if (priceType === 'supplier') {
+      // For supplier prices, show average price per item (filtered by supplier if specified)
+      const supplierFilter = supplier ? `WHERE Supplier = @supplier` : '';
+      query = `
+        SELECT
+          pl.PriceCode,
+          pl.Description,
+          pl.CostCentre,
+          cc.Name AS CostCentreName,
+          pc.Printout AS Unit,
+          sp.AvgPrice AS Price1,
+          NULL AS Price2,
+          NULL AS Price3,
+          NULL AS Price4,
+          NULL AS Price5
+        FROM ${priceListTable} pl
+        LEFT JOIN ${costCentresTable} cc ON pl.CostCentre = cc.Code AND cc.Tier = 1
+        LEFT JOIN ${perCodesTable} pc ON pl.PerCode = pc.Code
+        LEFT JOIN (
+          SELECT ItemCode, AVG(Price) AS AvgPrice
+          FROM ${supplierPricesTable}
+          ${supplierFilter}
+          GROUP BY ItemCode
+        ) sp ON pl.PriceCode = sp.ItemCode
+        WHERE pl.Archived = 0
+      `;
+    } else {
+      // Build query to get all items with all 5 estimate price levels
+      query = `
+        SELECT
+          pl.PriceCode,
+          pl.Description,
+          pl.CostCentre,
+          cc.Name AS CostCentreName,
+          pc.Printout AS Unit,
+          p1.Price AS Price1,
+          p2.Price AS Price2,
+          p3.Price AS Price3,
+          p4.Price AS Price4,
+          p5.Price AS Price5
+        FROM ${priceListTable} pl
+        LEFT JOIN ${costCentresTable} cc ON pl.CostCentre = cc.Code AND cc.Tier = 1
+        LEFT JOIN ${perCodesTable} pc ON pl.PerCode = pc.Code
+        LEFT JOIN (
+          SELECT PriceCode, MAX(Price) AS Price
+          FROM ${pricesTable}
+          WHERE PriceLevel = 1
+          GROUP BY PriceCode
+        ) p1 ON pl.PriceCode = p1.PriceCode
+        LEFT JOIN (
+          SELECT PriceCode, MAX(Price) AS Price
+          FROM ${pricesTable}
+          WHERE PriceLevel = 2
+          GROUP BY PriceCode
+        ) p2 ON pl.PriceCode = p2.PriceCode
+        LEFT JOIN (
+          SELECT PriceCode, MAX(Price) AS Price
+          FROM ${pricesTable}
+          WHERE PriceLevel = 3
+          GROUP BY PriceCode
+        ) p3 ON pl.PriceCode = p3.PriceCode
+        LEFT JOIN (
+          SELECT PriceCode, MAX(Price) AS Price
+          FROM ${pricesTable}
+          WHERE PriceLevel = 4
+          GROUP BY PriceCode
+        ) p4 ON pl.PriceCode = p4.PriceCode
+        LEFT JOIN (
+          SELECT PriceCode, MAX(Price) AS Price
+          FROM ${pricesTable}
+          WHERE PriceLevel = 5
+          GROUP BY PriceCode
+        ) p5 ON pl.PriceCode = p5.PriceCode
+        WHERE pl.Archived = 0
+      `;
+    }
+
+    const request = pool.request();
+
+    // Add supplier parameter if filtering supplier prices
+    if (priceType === 'supplier' && supplier) {
+      request.input('supplier', supplier);
+    }
+
+    // Add cost centre filter
+    if (costCentre) {
+      query += ` AND pl.CostCentre = @costCentre`;
+      request.input('costCentre', costCentre);
+    }
+
+    // Add search term filter
+    if (searchTerm && searchTerm.trim() !== '') {
+      const words = searchTerm.trim().split(/\s+/).filter(w => w.length > 0);
+      words.forEach((word, index) => {
+        query += ` AND (pl.PriceCode LIKE @searchPattern${index} OR pl.Description LIKE @searchPattern${index})`;
+        request.input(`searchPattern${index}`, `%${word}%`);
+      });
+    }
+
+    // Add filter to exclude zero prices for selected levels
+    if (excludeZeroPrices && priceLevels.length > 0) {
+      const priceConditions = priceLevels.map(level => `COALESCE(p${level}.Price, 0) > 0`).join(' OR ');
+      query += ` AND (${priceConditions})`;
+    }
+
+    query += `
+      ORDER BY
+        ISNULL(cc.SortOrder, 999999),
+        pl.CostCentre,
+        pl.PriceCode
+    `;
+
+    const result = await request.query(query);
+
+    console.log(`✅ Found ${result.recordset.length} items matching bulk change criteria`);
+
+    return {
+      success: true,
+      data: result.recordset
+    };
+
+  } catch (error) {
+    console.error('Error getting bulk price items:', error);
+    return {
+      success: false,
+      message: error.message,
+      data: []
+    };
+  }
+}
+
+/**
+ * Apply bulk price changes by inserting/updating price records
+ *
+ * For estimate prices: Updates Prices table with new price history records
+ * For supplier prices: Updates SuppliersPrices table for all matching suppliers
+ *
+ * NOTE: This function checks for existing price records on the same date and updates them
+ * rather than creating duplicates. Optional columns (Estimator, Notes, CreatedDate) are
+ * only included if they exist in the database schema.
+ *
+ * @param {Object} data - Price change data
+ * @param {string} data.priceType - 'estimate' or 'supplier'
+ * @param {Array<Object>} data.changes - Array of { PriceCode, Level, NewPrice, CurrentPrice }
+ * @param {string} data.validFrom - Effective date for price changes
+ * @param {string} data.estimator - Optional estimator name/initials
+ * @param {string} data.notes - Optional notes about the price change
+ *
+ * @returns {Promise<{success: boolean, data?: {successCount: number, errorCount: number, errors: Array}, message?: string}>}
+ */
+async function applyBulkPriceChanges(data) {
+  try {
+    const pool = getPool();
+    if (!pool) {
+      return { success: false, message: 'Database not connected' };
+    }
+
+    const dbConfig = credentialsStore.getCredentials();
+    if (!dbConfig) {
+      return { success: false, message: 'No database configuration found' };
+    }
+
+    const { changes, validFrom, estimator, notes } = data;
+
+    if (!changes || changes.length === 0) {
+      return { success: false, message: 'No changes to apply' };
+    }
+
+    const pricesTable = qualifyTable('Prices', dbConfig);
+    const dbName = dbConfig.database;
+
+    // Check if optional columns exist
+    const checkOptionalColumns = await pool.request().query(`
+      SELECT COLUMN_NAME
+      FROM [${dbName}].INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_NAME = 'Prices'
+        AND TABLE_SCHEMA = 'dbo'
+        AND COLUMN_NAME IN ('Estimator', 'Notes', 'CreatedDate')
+    `);
+
+    const hasEstimator = checkOptionalColumns.recordset.some(c => c.COLUMN_NAME === 'Estimator');
+    const hasNotes = checkOptionalColumns.recordset.some(c => c.COLUMN_NAME === 'Notes');
+    const hasCreatedDate = checkOptionalColumns.recordset.some(c => c.COLUMN_NAME === 'CreatedDate');
+
+    // Build column lists for INSERT
+    const columns = ['PriceCode', 'PriceLevel', 'Price', 'Date'];
+    if (hasEstimator) columns.push('Estimator');
+    if (hasNotes) columns.push('Notes');
+    if (hasCreatedDate) columns.push('CreatedDate');
+
+    let successCount = 0;
+    let errorCount = 0;
+    const errors = [];
+
+    // Process each change
+    for (const change of changes) {
+      try {
+        const { PriceCode, Level, NewPrice } = change;
+
+        // Check if a price already exists for this code/level/date
+        const checkQuery = `
+          SELECT COUNT(*) as count
+          FROM ${pricesTable}
+          WHERE PriceCode = @priceCode
+            AND PriceLevel = @priceLevel
+            AND Date = @validFrom
+        `;
+
+        const checkResult = await pool.request()
+          .input('priceCode', PriceCode)
+          .input('priceLevel', Level)
+          .input('validFrom', validFrom)
+          .query(checkQuery);
+
+        if (checkResult.recordset[0].count > 0) {
+          // Update existing price
+          const setClause = ['Price = @price'];
+          const request = pool.request()
+            .input('priceCode', PriceCode)
+            .input('priceLevel', Level)
+            .input('validFrom', validFrom)
+            .input('price', NewPrice);
+
+          if (hasEstimator) {
+            setClause.push('Estimator = @estimator');
+            request.input('estimator', estimator || null);
+          }
+
+          if (hasNotes) {
+            setClause.push('Notes = @notes');
+            request.input('notes', notes || null);
+          }
+
+          const updateQuery = `
+            UPDATE ${pricesTable}
+            SET ${setClause.join(', ')}
+            WHERE PriceCode = @priceCode
+              AND PriceLevel = @priceLevel
+              AND Date = @validFrom
+          `;
+
+          await request.query(updateQuery);
+        } else {
+          // Insert new price record
+          const values = ['@priceCode', '@priceLevel', '@price', '@validFrom'];
+          const request = pool.request()
+            .input('priceCode', PriceCode)
+            .input('priceLevel', Level)
+            .input('price', NewPrice)
+            .input('validFrom', validFrom);
+
+          if (hasEstimator) {
+            values.push('@estimator');
+            request.input('estimator', estimator || null);
+          }
+
+          if (hasNotes) {
+            values.push('@notes');
+            request.input('notes', notes || null);
+          }
+
+          if (hasCreatedDate) {
+            values.push('GETDATE()');
+          }
+
+          const insertQuery = `
+            INSERT INTO ${pricesTable} (${columns.join(', ')})
+            VALUES (${values.join(', ')})
+          `;
+
+          await request.query(insertQuery);
+        }
+
+        successCount++;
+
+      } catch (error) {
+        console.error(`Error updating price for ${change.PriceCode} Level ${change.Level}:`, error);
+        errorCount++;
+        errors.push({
+          item: change.PriceCode,
+          level: change.Level,
+          error: error.message
+        });
+      }
+    }
+
+    console.log(`✅ Bulk price change complete: ${successCount} success, ${errorCount} errors`);
+
+    return {
+      success: true,
+      data: {
+        successCount,
+        errorCount,
+        errors
+      },
+      message: errorCount > 0
+        ? `Updated ${successCount} prices with ${errorCount} errors`
+        : `Successfully updated ${successCount} prices`
+    };
+
+  } catch (error) {
+    console.error('Error applying bulk price changes:', error);
+    return {
+      success: false,
+      message: error.message
+    };
+  }
+}
+
 module.exports = {
   getCatalogueItems,
   getCatalogueItem,
@@ -1063,5 +1757,11 @@ module.exports = {
   addRecipeComponent,
   updateRecipeComponent,
   updateRecipeFormula,
-  deleteRecipeComponent
+  deleteRecipeComponent,
+  getEstimatePrices,
+  addEstimatePrice,
+  updateEstimatePrice,
+  deleteEstimatePrice,
+  getBulkPriceItems,
+  applyBulkPriceChanges
 };

@@ -1,13 +1,32 @@
 <template>
   <div class="supplier-prices-panel">
     <div class="d-flex justify-content-between align-items-center mb-3">
-      <h6 class="mb-0">
-        <i class="bi bi-truck me-2"></i>
-        Supplier Prices
-        <span v-if="itemCode" class="text-muted small ms-2">({{ itemCode }})</span>
-      </h6>
+      <div class="flex-shrink-0" style="min-width: 300px;">
+        <h6 class="mb-0">
+          <i class="bi bi-truck me-2"></i>
+          Supplier Prices
+          <span v-if="itemCode" class="text-muted small ms-2">({{ itemCode }})</span>
+        </h6>
+        <div v-if="itemDescription" class="text-muted small mt-1">
+          {{ itemDescription }}
+        </div>
+      </div>
+
+      <div v-if="supplierPrices.length > 0" class="flex-grow-1 mx-3" style="max-width: 400px;">
+        <label class="form-label small mb-1">Filter by Supplier:</label>
+        <SearchableSelect
+          v-model="selectedSupplierFilter"
+          :options="supplierFilterOptions"
+          placeholder="All Suppliers"
+          labelKey="label"
+          valueKey="value"
+          :showClearOption="true"
+          clearLabel="Show All Suppliers"
+        />
+      </div>
+
       <button
-        class="btn btn-sm btn-primary"
+        class="btn btn-sm btn-primary flex-shrink-0"
         @click="openAddDialog"
         :disabled="!itemCode"
       >
@@ -30,15 +49,26 @@
     </div>
 
     <!-- Supplier Prices Grid -->
-    <div v-else class="supplier-prices-grid" style="height: 400px;">
-      <ag-grid-vue
-        class="ag-theme-quartz"
-        :columnDefs="columnDefs"
-        :rowData="supplierPrices"
-        :defaultColDef="defaultColDef"
-        @grid-ready="onGridReady"
-        style="height: 100%;"
-      />
+    <div v-else>
+      <div v-if="supplierPrices.length > 0" class="mb-2 text-end small text-muted">
+        Showing {{ filteredSupplierPrices.length }} of {{ supplierPrices.length }} price(s)
+      </div>
+
+      <div v-if="supplierPrices.length === 0" class="alert alert-warning">
+        <i class="bi bi-exclamation-triangle me-2"></i>
+        No supplier prices found for this item
+      </div>
+
+      <div v-else class="supplier-prices-grid" style="height: 400px; width: 100%;">
+        <ag-grid-vue
+          class="ag-theme-quartz"
+          :columnDefs="columnDefs"
+          :rowData="filteredSupplierPrices"
+          :defaultColDef="defaultColDef"
+          @grid-ready="onGridReady"
+          style="height: 100%; width: 100%;"
+        />
+      </div>
     </div>
 
     <!-- Add/Edit Dialog -->
@@ -55,21 +85,14 @@
             <div class="row">
               <div class="col-md-6 mb-3">
                 <label class="form-label">Supplier *</label>
-                <select
+                <SearchableSelect
                   v-model="formData.supplier"
-                  class="form-select"
+                  :options="supplierOptions"
                   :disabled="editMode"
-                  required
-                >
-                  <option value="">Select Supplier...</option>
-                  <option
-                    v-for="supplier in suppliers"
-                    :key="supplier.Code"
-                    :value="supplier.Code"
-                  >
-                    {{ supplier.Name }} ({{ supplier.Code }})
-                  </option>
-                </select>
+                  placeholder="Search suppliers..."
+                  labelKey="label"
+                  valueKey="value"
+                />
               </div>
 
               <div class="col-md-6 mb-3">
@@ -123,13 +146,14 @@
               <div class="col-md-6 mb-3">
                 <label class="form-label">Price Level</label>
                 <select v-model.number="formData.priceLevel" class="form-select form-select-sm">
-                  <option :value="0">Default</option>
-                  <option :value="1">Level 1</option>
-                  <option :value="2">Level 2</option>
-                  <option :value="3">Level 3</option>
-                  <option :value="4">Level 4</option>
-                  <option :value="5">Level 5</option>
+                  <option :value="0">0 - Default (Base Price)</option>
+                  <option :value="1">1 - Price Level 1</option>
+                  <option :value="2">2 - Price Level 2</option>
+                  <option :value="3">3 - Price Level 3</option>
+                  <option :value="4">4 - Price Level 4</option>
+                  <option :value="5">5 - Price Level 5</option>
                 </select>
+                <div class="form-text small">Default (0) = base/standard pricing. Levels 1-5 for custom pricing tiers.</div>
               </div>
 
               <div class="col-md-6 mb-3">
@@ -164,19 +188,25 @@
 </template>
 
 <script>
-import { ref, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { AgGridVue } from 'ag-grid-vue3';
 import { useElectronAPI } from '@/composables/useElectronAPI';
+import SearchableSelect from '../common/SearchableSelect.vue';
 
 export default {
   name: 'SupplierPricesPanel',
   components: {
-    AgGridVue
+    AgGridVue,
+    SearchableSelect
   },
   props: {
     itemCode: {
       type: String,
       default: null
+    },
+    isVisible: {
+      type: Boolean,
+      default: true
     }
   },
   emits: ['updated'],
@@ -185,9 +215,11 @@ export default {
     const loading = ref(false);
     const supplierPrices = ref([]);
     const suppliers = ref([]);
+    const selectedSupplierFilter = ref('');
     const gridApi = ref(null);
     const showDialog = ref(false);
     const editMode = ref(false);
+    const itemDescription = ref('');
     const formData = ref({
       supplier: '',
       reference: '',
@@ -198,35 +230,77 @@ export default {
       area: ''
     });
 
+    // Format suppliers for SearchableSelect (Add/Edit dialog)
+    const supplierOptions = computed(() => {
+      return suppliers.value.map(supplier => ({
+        value: supplier.Code,
+        label: `${supplier.Name} (${supplier.Code})`
+      }));
+    });
+
+    // Format unique suppliers from current prices for filter dropdown
+    const supplierFilterOptions = computed(() => {
+      const uniqueSuppliers = new Map();
+
+      supplierPrices.value.forEach(price => {
+        if (price.Supplier && !uniqueSuppliers.has(price.Supplier)) {
+          uniqueSuppliers.set(price.Supplier, {
+            value: price.Supplier,
+            label: price.SupplierName
+              ? `${price.SupplierName} (${price.Supplier})`
+              : price.Supplier
+          });
+        }
+      });
+
+      return Array.from(uniqueSuppliers.values()).sort((a, b) =>
+        a.label.localeCompare(b.label)
+      );
+    });
+
+    // Filter supplier prices based on selected supplier
+    const filteredSupplierPrices = computed(() => {
+      if (!selectedSupplierFilter.value) {
+        return supplierPrices.value;
+      }
+
+      return supplierPrices.value.filter(price =>
+        price.Supplier === selectedSupplierFilter.value
+      );
+    });
+
     const columnDefs = ref([
       {
         field: 'Supplier',
         headerName: 'Supplier',
-        width: 120,
-        pinned: 'left'
+        flex: 0.8,
+        minWidth: 100
       },
       {
         field: 'SupplierName',
         headerName: 'Supplier Name',
-        flex: 1,
-        minWidth: 200
+        flex: 2,
+        minWidth: 150
       },
       {
         field: 'Reference',
         headerName: 'Reference (SKU)',
-        width: 150
+        flex: 1,
+        minWidth: 120
       },
       {
         field: 'Price',
         headerName: 'Price',
-        width: 100,
+        flex: 0.6,
+        minWidth: 90,
         type: 'numericColumn',
         valueFormatter: params => params.value ? `$${params.value.toFixed(2)}` : ''
       },
       {
         field: 'ValidFrom',
         headerName: 'Valid From',
-        width: 120,
+        flex: 0.8,
+        minWidth: 100,
         valueFormatter: params => {
           if (!params.value) return '';
           const date = new Date(params.value);
@@ -236,21 +310,14 @@ export default {
       {
         field: 'Comments',
         headerName: 'Comments',
-        width: 150
-      },
-      {
-        field: 'LastUpdated',
-        headerName: 'Last Updated',
-        width: 150,
-        valueFormatter: params => {
-          if (!params.value) return '';
-          const date = new Date(params.value);
-          return date.toLocaleString();
-        }
+        flex: 1.5,
+        minWidth: 150
       },
       {
         headerName: 'Actions',
-        width: 120,
+        flex: 0.6,
+        minWidth: 100,
+        suppressSizeToFit: true,
         cellRenderer: () => {
           return `
             <div class="btn-group btn-group-sm" role="group">
@@ -283,10 +350,13 @@ export default {
     watch(() => props.itemCode, (newValue) => {
       if (newValue) {
         loadSupplierPrices();
+        loadItemDescription();
       } else {
         supplierPrices.value = [];
+        itemDescription.value = '';
       }
     });
+
 
     async function loadSupplierPrices() {
       if (!props.itemCode) return;
@@ -294,6 +364,7 @@ export default {
       loading.value = true;
       try {
         const result = await api.supplierPrices.get(props.itemCode);
+
         if (result.success) {
           supplierPrices.value = result.data || [];
         } else {
@@ -316,6 +387,20 @@ export default {
         }
       } catch (error) {
         console.error('Error loading suppliers:', error);
+      }
+    }
+
+    async function loadItemDescription() {
+      if (!props.itemCode) return;
+
+      try {
+        const result = await api.catalogue.getItem(props.itemCode, 0);
+        if (result.success && result.data) {
+          itemDescription.value = result.data.Description || '';
+        }
+      } catch (error) {
+        console.error('Error loading item description:', error);
+        itemDescription.value = '';
       }
     }
 
@@ -436,17 +521,23 @@ export default {
       loading,
       supplierPrices,
       suppliers,
+      supplierOptions,
+      selectedSupplierFilter,
+      supplierFilterOptions,
+      filteredSupplierPrices,
       columnDefs,
       defaultColDef,
       showDialog,
       editMode,
       formData,
+      itemDescription,
       openAddDialog,
       editSupplierPrice,
       closeDialog,
       saveSupplierPrice,
       deleteSupplierPrice,
-      onGridReady
+      onGridReady,
+      loadItemDescription
     };
   }
 };
@@ -459,6 +550,13 @@ export default {
 
 .supplier-prices-grid {
   border: 1px solid #dee2e6;
+  border-radius: 4px;
+  overflow: hidden;
+  min-height: 400px;
+}
+
+/* Ensure AG Grid is visible */
+.supplier-prices-grid :deep(.ag-root-wrapper) {
   border-radius: 4px;
 }
 </style>

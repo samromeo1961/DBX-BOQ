@@ -10,8 +10,11 @@ const boqHandlers = require('./src/ipc-handlers/boq');
 const jobsHandlers = require('./src/ipc-handlers/jobs');
 const costCentresHandlers = require('./src/ipc-handlers/cost-centres');
 const catalogueHandlers = require('./src/ipc-handlers/catalogue');
+const catalogueDiagnosticsHandlers = require('./src/ipc-handlers/catalogue-diagnostics');
+const estimatePricesSchemaHandlers = require('./src/ipc-handlers/estimate-prices-schema');
 const supplierPricesHandlers = require('./src/ipc-handlers/supplier-prices');
 const catalogueTemplatesHandlers = require('./src/ipc-handlers/catalogue-templates');
+const catalogueImagesHandlers = require('./src/ipc-handlers/catalogue-images');
 const purchaseOrdersHandlers = require('./src/ipc-handlers/purchase-orders');
 const contactsHandlers = require('./src/ipc-handlers/contacts');
 const boqOptionsStore = require('./src/database/boq-options-store');
@@ -166,6 +169,9 @@ app.whenReady().then(async () => {
       // Ensure optional columns exist in SuppliersPrices table
       await supplierPricesHandlers.ensureSuppliersPricesColumns();
 
+      // Ensure Images column exists in PriceList table
+      await catalogueImagesHandlers.ensureImagesColumn();
+
       createMainWindow();
     } catch (error) {
       console.error('Failed to connect to database:', error);
@@ -219,6 +225,22 @@ ipcMain.handle('db:save-connection', async (event, dbConfig) => {
 
     // Ensure optional columns exist in SuppliersPrices table
     await supplierPricesHandlers.ensureSuppliersPricesColumns();
+
+    // Ensure Images column exists in PriceList table
+    await catalogueImagesHandlers.ensureImagesColumn();
+
+    // Ensure estimate price columns exist in Prices table
+    await estimatePricesSchemaHandlers.ensureEstimatePriceColumns();
+
+    // Run diagnostics to check for duplicate data
+    console.log('\n=== Running Catalogue Diagnostics ===');
+    const duplicatePriceCodesResult = await catalogueDiagnosticsHandlers.checkDuplicatePriceCodes();
+    const duplicatePricesResult = await catalogueDiagnosticsHandlers.checkDuplicatePrices();
+    if (duplicatePricesResult.success && duplicatePricesResult.count > 0) {
+      console.log('⚠️  WARNING: Found duplicate Price entries! This will cause duplicate catalogue items in the grid.');
+      console.log('   Please clean up duplicate Price records in the database.');
+    }
+    console.log('=== Diagnostics Complete ===\n');
 
     // Close settings window and open main window
     if (settingsWindow) {
@@ -341,6 +363,24 @@ ipcMain.handle('catalogue-templates:get-specification', (event, priceCode) =>
 ipcMain.handle('catalogue-templates:update-specification', (event, data) =>
   catalogueTemplatesHandlers.updateSpecification(data));
 
+// ============================================================
+// Catalogue Images IPC Handlers
+// ============================================================
+ipcMain.handle('catalogue-images:get-images', (event, priceCode) =>
+  catalogueImagesHandlers.getImages(priceCode));
+ipcMain.handle('catalogue-images:add-image', (event, data) =>
+  catalogueImagesHandlers.addImage(data));
+ipcMain.handle('catalogue-images:update-image', (event, data) =>
+  catalogueImagesHandlers.updateImage(data));
+ipcMain.handle('catalogue-images:delete-image', (event, priceCode, index) =>
+  catalogueImagesHandlers.deleteImage(priceCode, index));
+ipcMain.handle('catalogue-images:set-primary-image', (event, priceCode, index) =>
+  catalogueImagesHandlers.setPrimaryImage(priceCode, index));
+ipcMain.handle('catalogue-images:copy-images', (event, sourceCode, targetCode) =>
+  catalogueImagesHandlers.copyImages(sourceCode, targetCode));
+ipcMain.handle('catalogue-images:reorder-images', (event, priceCode, reorderedImages) =>
+  catalogueImagesHandlers.reorderImages(priceCode, reorderedImages));
+
 // Catalogue Management
 ipcMain.handle('catalogue:get-all-items', (event, params) => catalogueHandlers.getAllCatalogueItems(params));
 ipcMain.handle('catalogue:get-per-codes', () => catalogueHandlers.getPerCodes());
@@ -352,6 +392,21 @@ ipcMain.handle('catalogue:add-recipe-component', (event, mainItem, subItem, quan
 ipcMain.handle('catalogue:update-recipe-component', (event, mainItem, subItem, quantity) => catalogueHandlers.updateRecipeComponent(mainItem, subItem, quantity));
 ipcMain.handle('catalogue:update-recipe-formula', (event, mainItem, subItem, formula) => catalogueHandlers.updateRecipeFormula(mainItem, subItem, formula));
 ipcMain.handle('catalogue:delete-recipe-component', (event, mainItem, subItem) => catalogueHandlers.deleteRecipeComponent(mainItem, subItem));
+
+// Catalogue Diagnostics
+ipcMain.handle('catalogue:check-duplicate-pricecodes', () => catalogueDiagnosticsHandlers.checkDuplicatePriceCodes());
+ipcMain.handle('catalogue:check-duplicate-prices', () => catalogueDiagnosticsHandlers.checkDuplicatePrices());
+ipcMain.handle('catalogue:debug-item-duplication', (event, priceCode) => catalogueDiagnosticsHandlers.debugItemDuplication(priceCode));
+
+// Estimate Prices
+ipcMain.handle('catalogue:get-estimate-prices', (event, priceCode) => catalogueHandlers.getEstimatePrices(priceCode));
+ipcMain.handle('catalogue:add-estimate-price', (event, data) => catalogueHandlers.addEstimatePrice(data));
+ipcMain.handle('catalogue:update-estimate-price', (event, data) => catalogueHandlers.updateEstimatePrice(data));
+ipcMain.handle('catalogue:delete-estimate-price', (event, priceCode, priceLevel, validFrom) => catalogueHandlers.deleteEstimatePrice(priceCode, priceLevel, validFrom));
+
+// Bulk Price Changes
+ipcMain.handle('catalogue:get-bulk-price-items', (event, criteria) => catalogueHandlers.getBulkPriceItems(criteria));
+ipcMain.handle('catalogue:apply-bulk-price-changes', (event, data) => catalogueHandlers.applyBulkPriceChanges(data));
 
 // ============================================================
 // IPC Handlers - Purchase Orders

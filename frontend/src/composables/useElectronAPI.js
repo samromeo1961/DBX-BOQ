@@ -102,7 +102,15 @@ export function useElectronAPI() {
       addRecipeComponent: (mainItem, subItem, quantity) => window.electronAPI?.catalogue.addRecipeComponent(mainItem, subItem, quantity),
       updateRecipeComponent: (mainItem, subItem, quantity) => window.electronAPI?.catalogue.updateRecipeComponent(mainItem, subItem, quantity),
       updateRecipeFormula: (mainItem, subItem, formula) => window.electronAPI?.catalogue.updateRecipeFormula(mainItem, subItem, formula),
-      deleteRecipeComponent: (mainItem, subItem) => window.electronAPI?.catalogue.deleteRecipeComponent(mainItem, subItem)
+      deleteRecipeComponent: (mainItem, subItem) => window.electronAPI?.catalogue.deleteRecipeComponent(mainItem, subItem),
+      // Estimate Prices
+      getEstimatePrices: (priceCode) => window.electronAPI?.catalogue.getEstimatePrices(priceCode),
+      addEstimatePrice: (data) => window.electronAPI?.catalogue.addEstimatePrice(data),
+      updateEstimatePrice: (data) => window.electronAPI?.catalogue.updateEstimatePrice(data),
+      deleteEstimatePrice: (priceCode, priceLevel, validFrom) => window.electronAPI?.catalogue.deleteEstimatePrice(priceCode, priceLevel, validFrom),
+      // Bulk Price Changes
+      getBulkPriceItems: (criteria) => window.electronAPI?.catalogue.getBulkPriceItems(criteria),
+      applyBulkPriceChanges: (data) => window.electronAPI?.catalogue.applyBulkPriceChanges(data)
     },
 
         // Supplier Prices
@@ -127,6 +135,23 @@ export function useElectronAPI() {
         window.electronAPI?.catalogueTemplates.updateSpecification(data)
     },
 
+    // Catalogue Images
+    catalogueImages: {
+      getImages: (priceCode) =>
+        window.electronAPI?.catalogueImages.getImages(priceCode),
+      addImage: (data) =>
+        window.electronAPI?.catalogueImages.addImage(data),
+      updateImage: (data) =>
+        window.electronAPI?.catalogueImages.updateImage(data),
+      deleteImage: (priceCode, index) =>
+        window.electronAPI?.catalogueImages.deleteImage(priceCode, index),
+      setPrimaryImage: (priceCode, index) =>
+        window.electronAPI?.catalogueImages.setPrimaryImage(priceCode, index),
+      copyImages: (sourceCode, targetCode) =>
+        window.electronAPI?.catalogueImages.copyImages(sourceCode, targetCode),
+      reorderImages: (priceCode, reorderedImages) =>
+        window.electronAPI?.catalogueImages.reorderImages(priceCode, reorderedImages)
+    },
 
     // Purchase Orders
     purchaseOrders: {

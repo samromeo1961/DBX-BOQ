@@ -97,7 +97,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
     addRecipeComponent: (mainItem, subItem, quantity) => ipcRenderer.invoke('catalogue:add-recipe-component', mainItem, subItem, quantity),
     updateRecipeComponent: (mainItem, subItem, quantity) => ipcRenderer.invoke('catalogue:update-recipe-component', mainItem, subItem, quantity),
     updateRecipeFormula: (mainItem, subItem, formula) => ipcRenderer.invoke('catalogue:update-recipe-formula', mainItem, subItem, formula),
-    deleteRecipeComponent: (mainItem, subItem) => ipcRenderer.invoke('catalogue:delete-recipe-component', mainItem, subItem)
+    deleteRecipeComponent: (mainItem, subItem) => ipcRenderer.invoke('catalogue:delete-recipe-component', mainItem, subItem),
+    // Diagnostics
+    checkDuplicatePriceCodes: () => ipcRenderer.invoke('catalogue:check-duplicate-pricecodes'),
+    checkDuplicatePrices: () => ipcRenderer.invoke('catalogue:check-duplicate-prices'),
+    debugItemDuplication: (priceCode) => ipcRenderer.invoke('catalogue:debug-item-duplication', priceCode),
+    // Estimate Prices
+    getEstimatePrices: (priceCode) => ipcRenderer.invoke('catalogue:get-estimate-prices', priceCode),
+    addEstimatePrice: (data) => ipcRenderer.invoke('catalogue:add-estimate-price', data),
+    updateEstimatePrice: (data) => ipcRenderer.invoke('catalogue:update-estimate-price', data),
+    deleteEstimatePrice: (priceCode, priceLevel, validFrom) => ipcRenderer.invoke('catalogue:delete-estimate-price', priceCode, priceLevel, validFrom),
+    // Bulk Price Changes
+    getBulkPriceItems: (criteria) => ipcRenderer.invoke('catalogue:get-bulk-price-items', criteria),
+    applyBulkPriceChanges: (data) => ipcRenderer.invoke('catalogue:apply-bulk-price-changes', data)
   },
 
     // Supplier Prices
@@ -120,6 +132,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.invoke('catalogue-templates:get-specification', priceCode),
       updateSpecification: (data) =>
         ipcRenderer.invoke('catalogue-templates:update-specification', data)
+    },
+
+    // Catalogue Images
+    catalogueImages: {
+      getImages: (priceCode) =>
+        ipcRenderer.invoke('catalogue-images:get-images', priceCode),
+      addImage: (data) =>
+        ipcRenderer.invoke('catalogue-images:add-image', data),
+      updateImage: (data) =>
+        ipcRenderer.invoke('catalogue-images:update-image', data),
+      deleteImage: (priceCode, index) =>
+        ipcRenderer.invoke('catalogue-images:delete-image', priceCode, index),
+      setPrimaryImage: (priceCode, index) =>
+        ipcRenderer.invoke('catalogue-images:set-primary-image', priceCode, index),
+      copyImages: (sourceCode, targetCode) =>
+        ipcRenderer.invoke('catalogue-images:copy-images', sourceCode, targetCode),
+      reorderImages: (priceCode, reorderedImages) =>
+        ipcRenderer.invoke('catalogue-images:reorder-images', priceCode, reorderedImages)
     },
 
   // Purchase Orders

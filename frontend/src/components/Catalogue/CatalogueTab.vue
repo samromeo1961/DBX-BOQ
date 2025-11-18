@@ -6,6 +6,7 @@
       v-model:showArchived="showArchived"
       v-model:showRecipesOnly="showRecipesOnly"
       @add="showAddModal = true"
+      @bulkPriceChange="() => { console.log('Bulk Price Change button clicked!'); showBulkPriceModal = true; console.log('showBulkPriceModal set to:', showBulkPriceModal); }"
       @import="showImportModal = true"
       @export="exportCatalogue"
       @refresh="loadCatalogue"
@@ -31,6 +32,7 @@
             :loading="loading"
             :perCodes="perCodes"
             :costCentres="costCentres"
+            :selectedItemCode="selectedItemCode"
             @cellValueChanged="onCellValueChanged"
             @duplicateItem="onDuplicateItem"
             @manageRecipe="onManageRecipe"
@@ -45,6 +47,17 @@
           <div v-if="selectedItemCode && !isPanelCollapsed" class="item-details-section border-top">
             <!-- Tab Navigation with Close Button -->
             <ul class="nav nav-tabs" role="tablist">
+              <li class="nav-item">
+                <button
+                  class="nav-link"
+                  :class="{ active: activeTab === 'estimate' }"
+                  @click="activeTab = 'estimate'"
+                  type="button"
+                >
+                  <i class="bi bi-currency-dollar me-1"></i>
+                  Estimate Prices
+                </button>
+              </li>
               <li class="nav-item">
                 <button
                   class="nav-link"
@@ -78,6 +91,17 @@
                   Specification
                 </button>
               </li>
+              <li class="nav-item">
+                <button
+                  class="nav-link"
+                  :class="{ active: activeTab === 'images' }"
+                  @click="activeTab = 'images'"
+                  type="button"
+                >
+                  <i class="bi bi-images me-1"></i>
+                  Images
+                </button>
+              </li>
               <li class="nav-item ms-auto">
                 <button
                   class="nav-link text-danger"
@@ -92,21 +116,35 @@
 
           <!-- Tab Content -->
           <div class="tab-content">
-            <div v-show="activeTab === 'prices'" class="tab-pane">
+            <div v-if="activeTab === 'estimate'" class="tab-pane active">
+              <EstimatePricesPanel
+                :itemCode="selectedItemCode"
+                :isVisible="activeTab === 'estimate'"
+                @updated="loadCatalogue"
+              />
+            </div>
+            <div v-if="activeTab === 'prices'" class="tab-pane active">
               <SupplierPricesPanel
                 :itemCode="selectedItemCode"
+                :isVisible="activeTab === 'prices'"
                 @updated="loadCatalogue"
               />
             </div>
-            <div v-show="activeTab === 'template'" class="tab-pane">
+            <div v-if="activeTab === 'template'" class="tab-pane active">
               <TemplateEditor
-                :itemCode="selectedItemCode"
+                :priceCode="selectedItemCode"
                 @updated="loadCatalogue"
               />
             </div>
-            <div v-show="activeTab === 'specification'" class="tab-pane">
+            <div v-if="activeTab === 'specification'" class="tab-pane active">
               <SpecificationEditor
-                :itemCode="selectedItemCode"
+                :priceCode="selectedItemCode"
+                @updated="loadCatalogue"
+              />
+            </div>
+            <div v-if="activeTab === 'images'" class="tab-pane active">
+              <ImageGalleryPanel
+                :priceCode="selectedItemCode"
                 @updated="loadCatalogue"
               />
             </div>
@@ -174,6 +212,13 @@
       @close="showRecipeModal = false; editingRecipePriceCode = null"
       @saved="loadCatalogue"
     />
+
+    <!-- Bulk Price Change Modal -->
+    <BulkPriceChangeModal
+      :show="showBulkPriceModal"
+      @close="showBulkPriceModal = false"
+      @applied="loadCatalogue"
+    />
   </div>
 </template>
 
@@ -186,9 +231,12 @@ import CostCentrePanel from '../BOQ/CostCentrePanel.vue';
 import CatalogueItemModal from './CatalogueItemModal.vue';
 import CatalogueImportModal from './CatalogueImportModal.vue';
 import RecipeManagementModal from './RecipeManagementModal.vue';
+import BulkPriceChangeModal from './BulkPriceChangeModal.vue';
+import EstimatePricesPanel from './EstimatePricesPanel.vue';
 import SupplierPricesPanel from './SupplierPricesPanel.vue';
 import TemplateEditor from './TemplateEditor.vue';
 import SpecificationEditor from './SpecificationEditor.vue';
+import ImageGalleryPanel from './ImageGalleryPanel.vue';
 
 export default {
   name: 'CatalogueTab',
@@ -199,9 +247,12 @@ export default {
     CatalogueItemModal,
     CatalogueImportModal,
     RecipeManagementModal,
+    BulkPriceChangeModal,
+    EstimatePricesPanel,
     SupplierPricesPanel,
     TemplateEditor,
-    SpecificationEditor
+    SpecificationEditor,
+    ImageGalleryPanel
   },
   setup() {
     const api = useElectronAPI();
@@ -218,11 +269,12 @@ export default {
     const showAddModal = ref(false);
     const showImportModal = ref(false);
     const showRecipeModal = ref(false);
+    const showBulkPriceModal = ref(false);
     const editingItem = ref(null);
     const editingRecipePriceCode = ref(null);
     const catalogueGridRef = ref(null);
     const selectedItemCode = ref(null);
-    const activeTab = ref('prices');
+    const activeTab = ref('estimate');
     const isPanelCollapsed = ref(false);
 
     // Computed - Just pass through the items from backend (backend does all filtering)
@@ -445,8 +497,18 @@ export default {
     function onItemSelected(event) {
       if (event && event.data && event.data.PriceCode) {
         selectedItemCode.value = event.data.PriceCode;
-        activeTab.value = 'prices'; // Default to prices tab
+        activeTab.value = 'estimate'; // Default to estimate prices tab
         isPanelCollapsed.value = false; // Expand panel when new item selected
+
+        // Scroll the selected row to the top of the grid for better visibility
+        if (catalogueGridRef.value && event.node) {
+          // Get the grid API
+          const gridApi = catalogueGridRef.value.gridApi;
+          if (gridApi) {
+            // Scroll to make the row visible at the top
+            gridApi.ensureNodeVisible(event.node, 'top');
+          }
+        }
       } else {
         selectedItemCode.value = null;
       }
@@ -502,6 +564,7 @@ export default {
       showAddModal,
       showImportModal,
       showRecipeModal,
+      showBulkPriceModal,
       editingItem,
       editingRecipePriceCode,
       catalogueGridRef,
@@ -548,7 +611,7 @@ export default {
 }
 
 .item-details-section {
-  height: 450px;
+  height: 600px; /* Increased from 450px for more space */
   display: flex;
   flex-direction: column;
   background-color: #fff;
@@ -583,12 +646,17 @@ export default {
 
 .item-details-section .tab-content {
   flex: 1;
-  overflow: hidden;
+  overflow: auto;
+  min-height: 0; /* Fix for flexbox overflow */
+  position: relative;
 }
 
 .item-details-section .tab-pane {
-  height: 100%;
+  display: block !important;
+  height: auto;
+  min-height: 300px;
   overflow-y: auto;
+  padding: 1rem;
 }
 
 /* Slide-up animation */

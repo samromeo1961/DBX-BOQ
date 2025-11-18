@@ -61,6 +61,14 @@
           Add Item
         </button>
         <button
+          class="btn btn-sm btn-warning"
+          @click="$emit('bulkPriceChange')"
+          title="Bulk Price Changes"
+        >
+          <i class="bi bi-lightning-charge"></i>
+          Bulk Prices
+        </button>
+        <button
           class="btn btn-sm btn-secondary"
           @click="$emit('import')"
           title="Import from CSV/Excel"
@@ -104,7 +112,7 @@ export default {
     showArchived: Boolean,
     showRecipesOnly: Boolean
   },
-  emits: ['update:searchTerm', 'update:showArchived', 'update:showRecipesOnly', 'add', 'import', 'export', 'refresh', 'clearFilters']
+  emits: ['update:searchTerm', 'update:showArchived', 'update:showRecipesOnly', 'add', 'bulkPriceChange', 'import', 'export', 'refresh', 'clearFilters']
 };
 </script>
 
