@@ -1597,11 +1597,34 @@ async function applyBulkPriceChanges(data) {
       return { success: false, message: 'No database configuration found' };
     }
 
-    const { changes, validFrom, estimator, notes } = data;
+    const { priceType = 'estimate', changes, validFrom, estimator, notes, supplier } = data;
 
     if (!changes || changes.length === 0) {
       return { success: false, message: 'No changes to apply' };
     }
+
+    // Route to appropriate handler based on price type
+    if (priceType === 'supplier') {
+      return await applyBulkSupplierPriceChanges(data, pool, dbConfig);
+    } else {
+      return await applyBulkEstimatePriceChanges(data, pool, dbConfig);
+    }
+
+  } catch (error) {
+    console.error('Error applying bulk price changes:', error);
+    return {
+      success: false,
+      message: error.message
+    };
+  }
+}
+
+/**
+ * Apply bulk estimate price changes (Prices table)
+ */
+async function applyBulkEstimatePriceChanges(data, pool, dbConfig) {
+  try {
+    const { changes, validFrom, estimator, notes } = data;
 
     const pricesTable = qualifyTable('Prices', dbConfig);
     const dbName = dbConfig.database;
@@ -1721,7 +1744,7 @@ async function applyBulkPriceChanges(data) {
       }
     }
 
-    console.log(`✅ Bulk price change complete: ${successCount} success, ${errorCount} errors`);
+    console.log(`✅ Bulk estimate price change complete: ${successCount} success, ${errorCount} errors`);
 
     return {
       success: true,
@@ -1731,12 +1754,108 @@ async function applyBulkPriceChanges(data) {
         errors
       },
       message: errorCount > 0
-        ? `Updated ${successCount} prices with ${errorCount} errors`
-        : `Successfully updated ${successCount} prices`
+        ? `Updated ${successCount} estimate prices with ${errorCount} errors`
+        : `Successfully updated ${successCount} estimate prices`
     };
 
   } catch (error) {
-    console.error('Error applying bulk price changes:', error);
+    console.error('Error applying bulk estimate price changes:', error);
+    return {
+      success: false,
+      message: error.message
+    };
+  }
+}
+
+/**
+ * Apply bulk supplier price changes (SuppliersPrices table)
+ */
+async function applyBulkSupplierPriceChanges(data, pool, dbConfig) {
+  try {
+    const { changes, validFrom, notes, supplier: supplierFilter } = data;
+
+    const suppliersPricesTable = qualifyTable('SuppliersPrices', dbConfig);
+
+    let successCount = 0;
+    let errorCount = 0;
+    const errors = [];
+
+    // Process each change
+    for (const change of changes) {
+      try {
+        const { PriceCode, NewPrice } = change;
+
+        // If a specific supplier was filtered, only update that supplier's prices
+        // Otherwise, update all suppliers who have a price record for this item
+        let updateQuery;
+        const request = pool.request()
+          .input('itemCode', PriceCode)
+          .input('price', NewPrice)
+          .input('suppDate', validFrom);
+
+        if (notes) {
+          request.input('comments', notes);
+        }
+
+        if (supplierFilter) {
+          // Update only the specified supplier
+          updateQuery = `
+            UPDATE ${suppliersPricesTable}
+            SET
+              Price = @price,
+              Supp_Date = @suppDate
+              ${notes ? ', Comments = @comments' : ''}
+            WHERE ItemCode = @itemCode
+              AND Supplier = @supplier
+          `;
+          request.input('supplier', supplierFilter);
+        } else {
+          // Update all suppliers for this item
+          updateQuery = `
+            UPDATE ${suppliersPricesTable}
+            SET
+              Price = @price,
+              Supp_Date = @suppDate
+              ${notes ? ', Comments = @comments' : ''}
+            WHERE ItemCode = @itemCode
+          `;
+        }
+
+        const result = await request.query(updateQuery);
+
+        if (result.rowsAffected[0] > 0) {
+          successCount += result.rowsAffected[0];
+          console.log(`✅ Updated ${result.rowsAffected[0]} supplier price(s) for ${PriceCode}`);
+        } else {
+          console.log(`⚠️  No supplier prices found to update for ${PriceCode}`);
+        }
+
+      } catch (error) {
+        console.error(`Error updating supplier price for ${change.PriceCode}:`, error);
+        errorCount++;
+        errors.push({
+          item: change.PriceCode,
+          error: error.message
+        });
+      }
+    }
+
+    console.log(`✅ Bulk supplier price change complete: ${successCount} success, ${errorCount} errors`);
+
+    return {
+      success: true,
+      data: {
+        successCount,
+        errorCount,
+        errors
+      },
+      message: errorCount > 0
+        ? `Updated ${successCount} supplier prices with ${errorCount} errors`
+        : `Successfully updated ${successCount} supplier prices`
+    };
+
+  } catch (error) {
+    console.error('Error applying bulk supplier price changes:', error);
     return {
       success: false,
       message: error.message

@@ -108,6 +108,25 @@
               </div>
             </div>
 
+            <!-- Supplier filter - only shown for Supplier Prices -->
+            <div v-if="criteria.priceType === 'supplier'" class="row mb-3">
+              <div class="col-md-12">
+                <label class="form-label">
+                  <i class="bi bi-truck me-1"></i>
+                  Supplier Filter (optional)
+                </label>
+                <SearchableSelect
+                  v-model="criteria.supplier"
+                  :options="supplierOptions"
+                  placeholder="All Suppliers"
+                  :allowEmpty="true"
+                />
+                <small class="form-text text-muted">
+                  Filter to show prices from a specific supplier only
+                </small>
+              </div>
+            </div>
+
             <div class="mb-3">
               <label class="form-label d-block">Price Levels to Update</label>
               <div class="form-check form-check-inline">
@@ -375,6 +394,7 @@ export default {
     const step = ref(1);
     const applying = ref(false);
     const costCentres = ref([]);
+    const suppliers = ref([]);
     const matchingItems = ref([]);
     const previewChanges = ref([]);
 
@@ -383,7 +403,8 @@ export default {
       costCentre: '',
       searchTerm: '',
       priceLevels: [1],
-      excludeZeroPrices: true
+      excludeZeroPrices: true,
+      supplier: ''
     });
 
     const changeConfig = ref({
@@ -412,6 +433,13 @@ export default {
       return costCentres.value.map(cc => ({
         value: cc.Code,
         label: `${cc.Code} - ${cc.Name}`
+      }));
+    });
+
+    const supplierOptions = computed(() => {
+      return suppliers.value.map(s => ({
+        value: s.Code,
+        label: `${s.Code} - ${s.Name}`
       }));
     });
 
@@ -469,6 +497,22 @@ export default {
       }
     }
 
+    async function loadSuppliers() {
+      try {
+        console.log('Loading suppliers for bulk price modal...');
+        const result = await api.supplierPrices.getSuppliers();
+        console.log('Suppliers result:', result);
+        if (result.success) {
+          suppliers.value = result.data;
+          console.log('Suppliers loaded:', suppliers.value.length);
+        } else {
+          console.error('Failed to load suppliers:', result.message);
+        }
+      } catch (error) {
+        console.error('Error loading suppliers:', error);
+      }
+    }
+
     async function loadMatchingItems() {
       try {
         // Convert to plain object to avoid IPC cloning errors
@@ -477,7 +521,8 @@ export default {
           costCentre: criteria.value.costCentre,
           searchTerm: criteria.value.searchTerm,
           priceLevels: [...criteria.value.priceLevels],
-          excludeZeroPrices: criteria.value.excludeZeroPrices
+          excludeZeroPrices: criteria.value.excludeZeroPrices,
+          supplier: criteria.value.supplier
         };
 
         const result = await api.catalogue.getBulkPriceItems(plainCriteria);
@@ -602,7 +647,8 @@ export default {
           changes: plainChanges,
           validFrom: changeConfig.value.validFrom,
           estimator: changeConfig.value.estimator,
-          notes: changeConfig.value.notes
+          notes: changeConfig.value.notes,
+          supplier: criteria.value.supplier
         };
 
         const result = await api.catalogue.applyBulkPriceChanges(plainData);
@@ -631,7 +677,8 @@ export default {
         costCentre: '',
         searchTerm: '',
         priceLevels: [1],
-        excludeZeroPrices: true
+        excludeZeroPrices: true,
+        supplier: ''
       };
       changeConfig.value = {
         type: 'percentage_increase',
@@ -717,8 +764,9 @@ export default {
 
     watch(() => props.show, (newValue) => {
       if (newValue) {
-        console.log('Bulk Price Modal opened, loading cost centres...');
+        console.log('Bulk Price Modal opened, loading data...');
         loadCostCentres();
+        loadSuppliers();
       }
     }, { immediate: true });
 
@@ -727,6 +775,8 @@ export default {
       applying,
       costCentres,
       costCentreOptions,
+      suppliers,
+      supplierOptions,
       matchingItems,
       previewChanges,
       criteria,

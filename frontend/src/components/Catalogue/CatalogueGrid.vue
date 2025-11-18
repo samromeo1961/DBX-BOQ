@@ -1,5 +1,5 @@
 <template>
-  <div class="catalogue-grid h-100 p-2">
+  <div class="catalogue-grid h-100 p-2" @mouseup="handleTextSelection">
     <ag-grid-vue
       class="ag-theme-quartz"
       :columnDefs="columnDefs"
@@ -29,6 +29,18 @@
         </button>
       </div>
     </div>
+
+    <!-- Floating "Search Web" Button -->
+    <div
+      v-if="showSearchButton"
+      class="web-search-button shadow-lg"
+      :style="{ top: searchButtonPosition.y + 'px', left: searchButtonPosition.x + 'px' }"
+    >
+      <button class="btn btn-sm btn-primary" @click="searchWeb" title="Search selected text on the web (opens in external browser)">
+        <i class="bi bi-search me-1"></i>
+        Search Web
+      </button>
+    </div>
   </div>
 </template>
 
@@ -45,7 +57,8 @@ export default {
     catalogueItems: Array,
     loading: Boolean,
     perCodes: Array,
-    costCentres: Array
+    costCentres: Array,
+    selectedItemCode: String
   },
   emits: ['cellValueChanged', 'deleteItems', 'duplicateItem', 'manageRecipe', 'archiveItems', 'unarchiveItems', 'rowClicked'],
   setup(props, { emit }) {
@@ -70,10 +83,16 @@ export default {
         suppressSizeToFit: true,
         editable: false,
         cellStyle: params => {
+          // Selected item takes priority - yellow background
+          if (params.data && params.data.PriceCode === props.selectedItemCode && !params.data.IsHeading) {
+            return { fontWeight: 'bold', backgroundColor: '#fff3cd' };
+          }
+          // Heading items - blue background
           if (params.data && params.data.IsHeading) {
             return { fontWeight: 'bold', backgroundColor: '#e3f2fd' }; // Same blue as heading rows
           }
-          return { fontWeight: 'bold', backgroundColor: '#f8f9fa' }; // Default gray
+          // Default - gray background
+          return { fontWeight: 'bold', backgroundColor: '#f8f9fa' };
         }
       },
       {
@@ -245,6 +264,16 @@ export default {
     }
 
     function getRowStyle(params) {
+      // Highlight the currently selected item in the slide-up panel (highest priority)
+      if (params.data && params.data.PriceCode === props.selectedItemCode && !params.data.IsHeading) {
+        return {
+          backgroundColor: '#fff3cd', // Light yellow background for selected item
+          fontWeight: 'bold',
+          border: '2px solid #ffc107', // Golden border for selected item
+          boxShadow: '0 0 8px rgba(255, 193, 7, 0.5)'
+        };
+      }
+
       // Main headings get highlighted background and bold text
       if (params.data && params.data.IsHeading) {
         return {
@@ -275,9 +304,58 @@ export default {
       }
     }, { deep: true });
 
+    // Watch for changes to selectedItemCode and refresh row styles
+    watch(() => props.selectedItemCode, () => {
+      if (gridApi.value) {
+        gridApi.value.redrawRows();
+      }
+    });
+
     function clearFilters() {
       if (gridApi.value) {
         gridApi.value.setFilterModel(null);
+      }
+    }
+
+    // Web Search functionality
+    const showSearchButton = ref(false);
+    const selectedText = ref('');
+    const searchButtonPosition = ref({ x: 0, y: 0 });
+
+    function handleTextSelection(event) {
+      const selection = window.getSelection();
+      const text = selection.toString().trim();
+
+      if (text && text.length > 0) {
+        selectedText.value = text;
+
+        // Position the button near the mouse cursor
+        const rect = event.target.getBoundingClientRect();
+        searchButtonPosition.value = {
+          x: event.clientX - rect.left + 10,
+          y: event.clientY - rect.top + 10
+        };
+
+        showSearchButton.value = true;
+      } else {
+        showSearchButton.value = false;
+        selectedText.value = '';
+      }
+    }
+
+    function searchWeb() {
+      if (selectedText.value) {
+        // Open Google search in external browser
+        // Note: Most websites block iframe embedding due to X-Frame-Options security policy
+        const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(selectedText.value)}`;
+        window.open(searchUrl, '_blank');
+
+        // Hide the search button
+        showSearchButton.value = false;
+        selectedText.value = '';
+
+        // Clear text selection
+        window.getSelection().removeAllRanges();
       }
     }
 
@@ -292,7 +370,12 @@ export default {
       archiveSelected,
       unarchiveSelected,
       getRowStyle,
-      clearFilters
+      clearFilters,
+      showSearchButton,
+      selectedText,
+      searchButtonPosition,
+      handleTextSelection,
+      searchWeb
     };
   }
 };
@@ -301,5 +384,27 @@ export default {
 <style scoped>
 .catalogue-grid {
   position: relative;
+}
+
+.web-search-button {
+  position: absolute;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease-in;
+}
+
+.web-search-button button {
+  white-space: nowrap;
+  font-size: 0.875rem;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 </style>
