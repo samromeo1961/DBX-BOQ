@@ -202,11 +202,21 @@
                 </div>
               </div>
 
-              <!-- Email -->
+              <!-- Email and Phone -->
               <div class="row mb-3">
                 <div class="col-md-6">
                   <label class="form-label">Email</label>
                   <input v-model="formData.email" type="email" class="form-control" />
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label">Phone Number</label>
+                  <input
+                    v-model="formData.phone"
+                    type="tel"
+                    class="form-control"
+                    maxlength="20"
+                    placeholder="e.g., 0412 345 678"
+                  />
                 </div>
               </div>
 
@@ -412,6 +422,7 @@ export default {
       username: '',
       fullName: '',
       email: '',
+      phone: '',
       password: '',
       securityLevel: 2,
       active: true,
@@ -472,6 +483,7 @@ export default {
         username: '',
         fullName: '',
         email: '',
+        phone: '',
         password: '',
         securityLevel: 2,
         active: true,
@@ -503,6 +515,7 @@ export default {
         username: user.username,
         fullName: user.fullName || '',
         email: user.email || '',
+        phone: user.phone || '',
         password: '', // Don't show existing password
         securityLevel: user.securityLevel || 2,
         active: user.active || false,

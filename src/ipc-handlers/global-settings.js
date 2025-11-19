@@ -385,11 +385,30 @@ async function getUsers() {
     const commonDb = 'COMMON';
     const userTable = qualifyTable('User_', { ...dbConfig, systemDatabase: commonDb });
 
+    // Check if Phone column exists (optional column)
+    let hasPhoneColumn = false;
+    try {
+      const checkColumn = await pool.request().query(`
+        SELECT COLUMN_NAME
+        FROM [${commonDb}].INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = 'User_'
+          AND COLUMN_NAME = 'Phone'
+          AND TABLE_SCHEMA = 'dbo'
+      `);
+      hasPhoneColumn = checkColumn.recordset.length > 0;
+    } catch (err) {
+      console.log('⚠️  Could not check for Phone column, assuming it does not exist');
+    }
+
+    // Build query conditionally based on column availability
+    const phoneField = hasPhoneColumn ? 'Phone as phone,' : 'NULL as phone,';
+
     const result = await pool.request().query(`
       SELECT
         UserID as username,
         UserName as fullName,
         Email as email,
+        ${phoneField}
         SecurityLevel as securityLevel,
         UsePassword as usePassword,
         BudLimit as budgetLimit,
@@ -425,6 +444,24 @@ async function getUser(id) {
     const commonDb = 'COMMON';
     const userTable = qualifyTable('User_', { ...dbConfig, systemDatabase: commonDb });
 
+    // Check if Phone column exists (optional column)
+    let hasPhoneColumn = false;
+    try {
+      const checkColumn = await pool.request().query(`
+        SELECT COLUMN_NAME
+        FROM [${commonDb}].INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = 'User_'
+          AND COLUMN_NAME = 'Phone'
+          AND TABLE_SCHEMA = 'dbo'
+      `);
+      hasPhoneColumn = checkColumn.recordset.length > 0;
+    } catch (err) {
+      console.log('⚠️  Could not check for Phone column, assuming it does not exist');
+    }
+
+    // Build query conditionally based on column availability
+    const phoneField = hasPhoneColumn ? 'Phone as phone,' : 'NULL as phone,';
+
     const result = await pool.request()
       .input('userId', id)
       .query(`
@@ -432,6 +469,7 @@ async function getUser(id) {
           UserID as username,
           UserName as fullName,
           Email as email,
+          ${phoneField}
           SecurityLevel as securityLevel,
           UsePassword as usePassword,
           BudLimit as budgetLimit,
@@ -480,13 +518,29 @@ async function saveUser(user) {
     const commonDb = 'COMMON';
     const userTable = qualifyTable('User_', { ...dbConfig, systemDatabase: commonDb });
 
+    // Check if Phone column exists (optional column)
+    let hasPhoneColumn = false;
+    try {
+      const checkColumn = await pool.request().query(`
+        SELECT COLUMN_NAME
+        FROM [${commonDb}].INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = 'User_'
+          AND COLUMN_NAME = 'Phone'
+          AND TABLE_SCHEMA = 'dbo'
+      `);
+      hasPhoneColumn = checkColumn.recordset.length > 0;
+    } catch (err) {
+      console.log('⚠️  Could not check for Phone column, assuming it does not exist');
+    }
+
     console.log('saveUser called with:', {
       username: user.username,
       fullName: user.fullName,
       hasPassword: !!user.password,
       passwordLength: user.password?.length,
       active: user.active,
-      securityLevel: user.securityLevel
+      securityLevel: user.securityLevel,
+      hasPhoneColumn
     });
 
     // Password is stored as plain text (max 8 chars)
@@ -531,11 +585,20 @@ async function saveUser(user) {
         .input('etsLimit', user.etsLimit || 0)
         .input('permissions', user.permissions || null);
 
+      // Conditionally add phone input if column exists
+      if (hasPhoneColumn) {
+        request.input('phone', user.phone || null);
+      }
+
+      // Build UPDATE query conditionally
+      const phoneSet = hasPhoneColumn ? 'Phone = @phone,' : '';
+
       let updateQuery = `
         UPDATE ${userTable}
         SET
           UserName = @fullName,
           Email = @email,
+          ${phoneSet}
           SecurityLevel = @securityLevel,
           UsePassword = @usePassword,
           BudLimit = @budLimit,
@@ -562,7 +625,11 @@ async function saveUser(user) {
         throw new Error('Username (User ID) is required for new users');
       }
 
-      await pool.request()
+      // Build INSERT query conditionally based on column availability
+      const phoneColumn = hasPhoneColumn ? 'Phone,' : '';
+      const phoneValue = hasPhoneColumn ? '@phone,' : '';
+
+      const insertRequest = pool.request()
         .input('userId', user.username)
         .input('fullName', user.fullName || '')
         .input('email', user.email || null)
@@ -573,14 +640,20 @@ async function saveUser(user) {
         .input('orderLimit', user.orderLimit || 0)
         .input('varLimit', user.variationLimit || 0)
         .input('etsLimit', user.etsLimit || 0)
-        .input('permissions', user.permissions || null)
-        .query(`
+        .input('permissions', user.permissions || null);
+
+      // Conditionally add phone input if column exists
+      if (hasPhoneColumn) {
+        insertRequest.input('phone', user.phone || null);
+      }
+
+      await insertRequest.query(`
           INSERT INTO ${userTable} (
-            UserID, UserName, Email, Password, SecurityLevel,
+            UserID, UserName, Email, ${phoneColumn} Password, SecurityLevel,
             UsePassword, BudLimit, OrderLimit, VarLimit, ETSLimit,
             UserPermissions
           ) VALUES (
-            @userId, @fullName, @email, @password, @securityLevel,
+            @userId, @fullName, @email, ${phoneValue} @password, @securityLevel,
             @usePassword, @budLimit, @orderLimit, @varLimit, @etsLimit,
             @permissions
           )
