@@ -58,6 +58,44 @@ export function useElectronAPI() {
       saveLastUsed: (lastUsed) => window.electronAPI?.boqOptions.saveLastUsed(lastUsed)
     },
 
+    // Import Templates
+    importTemplates: {
+      getAll: () => window.electronAPI?.importTemplates.getAll(),
+      get: (id) => window.electronAPI?.importTemplates.get(id),
+      save: (template) => window.electronAPI?.importTemplates.save(template),
+      delete: (id) => window.electronAPI?.importTemplates.delete(id)
+    },
+
+    // Global Settings
+    settings: {
+      // Companies
+      getCompanies: () => window.electronAPI?.settings.getCompanies(),
+      getCompany: (id) => window.electronAPI?.settings.getCompany(id),
+      getCurrentCompany: () => window.electronAPI?.settings.getCurrentCompany(),
+      saveCompany: (company) => window.electronAPI?.settings.saveCompany(company),
+      deleteCompany: (id) => window.electronAPI?.settings.deleteCompany(id),
+      switchCompany: (id) => window.electronAPI?.settings.switchCompany(id),
+      // Users
+      getUsers: () => window.electronAPI?.settings.getUsers(),
+      getUser: (id) => window.electronAPI?.settings.getUser(id),
+      getCurrentUser: () => window.electronAPI?.settings.getCurrentUser(),
+      saveUser: (user) => window.electronAPI?.settings.saveUser(user),
+      deleteUser: (id) => window.electronAPI?.settings.deleteUser(id),
+      loginUser: (username, password) => window.electronAPI?.settings.loginUser(username, password),
+      logoutUser: () => window.electronAPI?.settings.logoutUser(),
+      // Application Settings
+      getApplicationDefaults: () => window.electronAPI?.settings.getApplicationDefaults(),
+      updateApplicationDefaults: (defaults) => window.electronAPI?.settings.updateApplicationDefaults(defaults),
+      getImportExportSettings: () => window.electronAPI?.settings.getImportExportSettings(),
+      updateImportExportSettings: (settings) => window.electronAPI?.settings.updateImportExportSettings(settings),
+      getPdfSettings: () => window.electronAPI?.settings.getPdfSettings(),
+      updatePdfSettings: (settings) => window.electronAPI?.settings.updatePdfSettings(settings),
+      getUiPreferences: () => window.electronAPI?.settings.getUiPreferences(),
+      updateUiPreferences: (preferences) => window.electronAPI?.settings.updateUiPreferences(preferences),
+      getAll: () => window.electronAPI?.settings.getAll(),
+      resetAll: () => window.electronAPI?.settings.resetAll()
+    },
+
     // Jobs
     jobs: {
       getList: (showArchived = false) => window.electronAPI?.jobs.getList(showArchived),
@@ -97,6 +135,7 @@ export function useElectronAPI() {
       updateItem: (item) => window.electronAPI?.catalogue.updateItem(item),
       addItem: (item) => window.electronAPI?.catalogue.addItem(item),
       deleteItems: (priceCodes) => window.electronAPI?.catalogue.deleteItems(priceCodes),
+      getItemUsage: (priceCode) => window.electronAPI?.catalogue.getItemUsage(priceCode),
       exportToCSV: (params) => window.electronAPI?.catalogue.exportCSV(params),
       // Recipe Management
       addRecipeComponent: (mainItem, subItem, quantity) => window.electronAPI?.catalogue.addRecipeComponent(mainItem, subItem, quantity),
@@ -110,7 +149,9 @@ export function useElectronAPI() {
       deleteEstimatePrice: (priceCode, priceLevel, validFrom) => window.electronAPI?.catalogue.deleteEstimatePrice(priceCode, priceLevel, validFrom),
       // Bulk Price Changes
       getBulkPriceItems: (criteria) => window.electronAPI?.catalogue.getBulkPriceItems(criteria),
-      applyBulkPriceChanges: (data) => window.electronAPI?.catalogue.applyBulkPriceChanges(data)
+      applyBulkPriceChanges: (data) => window.electronAPI?.catalogue.applyBulkPriceChanges(data),
+      // Import
+      importItems: (data) => window.electronAPI?.catalogue.importItems(data)
     },
 
         // Supplier Prices

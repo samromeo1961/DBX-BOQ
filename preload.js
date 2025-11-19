@@ -52,6 +52,44 @@ contextBridge.exposeInMainWorld('electronAPI', {
     saveLastUsed: (lastUsed) => ipcRenderer.invoke('boq-options:save-last-used', lastUsed)
   },
 
+  // Import Templates
+  importTemplates: {
+    getAll: () => ipcRenderer.invoke('import-templates:get-all'),
+    get: (id) => ipcRenderer.invoke('import-templates:get', id),
+    save: (template) => ipcRenderer.invoke('import-templates:save', template),
+    delete: (id) => ipcRenderer.invoke('import-templates:delete', id)
+  },
+
+  // Global Settings
+  settings: {
+    // Companies
+    getCompanies: () => ipcRenderer.invoke('settings:get-companies'),
+    getCompany: (id) => ipcRenderer.invoke('settings:get-company', id),
+    getCurrentCompany: () => ipcRenderer.invoke('settings:get-current-company'),
+    saveCompany: (company) => ipcRenderer.invoke('settings:save-company', company),
+    deleteCompany: (id) => ipcRenderer.invoke('settings:delete-company', id),
+    switchCompany: (id) => ipcRenderer.invoke('settings:switch-company', id),
+    // Users
+    getUsers: () => ipcRenderer.invoke('settings:get-users'),
+    getUser: (id) => ipcRenderer.invoke('settings:get-user', id),
+    getCurrentUser: () => ipcRenderer.invoke('settings:get-current-user'),
+    saveUser: (user) => ipcRenderer.invoke('settings:save-user', user),
+    deleteUser: (id) => ipcRenderer.invoke('settings:delete-user', id),
+    loginUser: (username, password) => ipcRenderer.invoke('settings:login-user', username, password),
+    logoutUser: () => ipcRenderer.invoke('settings:logout-user'),
+    // Application Settings
+    getApplicationDefaults: () => ipcRenderer.invoke('settings:get-application-defaults'),
+    updateApplicationDefaults: (defaults) => ipcRenderer.invoke('settings:update-application-defaults', defaults),
+    getImportExportSettings: () => ipcRenderer.invoke('settings:get-import-export-settings'),
+    updateImportExportSettings: (settings) => ipcRenderer.invoke('settings:update-import-export-settings', settings),
+    getPdfSettings: () => ipcRenderer.invoke('settings:get-pdf-settings'),
+    updatePdfSettings: (settings) => ipcRenderer.invoke('settings:update-pdf-settings', settings),
+    getUiPreferences: () => ipcRenderer.invoke('settings:get-ui-preferences'),
+    updateUiPreferences: (preferences) => ipcRenderer.invoke('settings:update-ui-preferences', preferences),
+    getAll: () => ipcRenderer.invoke('settings:get-all'),
+    resetAll: () => ipcRenderer.invoke('settings:reset-all')
+  },
+
   // Jobs
   jobs: {
     getList: (showArchived = false) => ipcRenderer.invoke('jobs:get-list', showArchived),
@@ -92,6 +130,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     updateItem: (item) => ipcRenderer.invoke('catalogue:update-item', item),
     addItem: (item) => ipcRenderer.invoke('catalogue:add-item', item),
     deleteItems: (priceCodes) => ipcRenderer.invoke('catalogue:delete-items', priceCodes),
+    getItemUsage: (priceCode) => ipcRenderer.invoke('catalogue:get-item-usage', priceCode),
     exportCSV: (params) => ipcRenderer.invoke('catalogue:export-csv', params),
     // Recipe Management
     addRecipeComponent: (mainItem, subItem, quantity) => ipcRenderer.invoke('catalogue:add-recipe-component', mainItem, subItem, quantity),
@@ -109,7 +148,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     deleteEstimatePrice: (priceCode, priceLevel, validFrom) => ipcRenderer.invoke('catalogue:delete-estimate-price', priceCode, priceLevel, validFrom),
     // Bulk Price Changes
     getBulkPriceItems: (criteria) => ipcRenderer.invoke('catalogue:get-bulk-price-items', criteria),
-    applyBulkPriceChanges: (data) => ipcRenderer.invoke('catalogue:apply-bulk-price-changes', data)
+    applyBulkPriceChanges: (data) => ipcRenderer.invoke('catalogue:apply-bulk-price-changes', data),
+    // Import
+    importItems: (data) => ipcRenderer.invoke('catalogue:import-items', data)
   },
 
     // Supplier Prices

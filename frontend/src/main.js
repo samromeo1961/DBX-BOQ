@@ -18,6 +18,8 @@ import BillOfQuantitiesTab from './components/BOQ/BillOfQuantitiesTab.vue';
 import CatalogueTab from './components/Catalogue/CatalogueTab.vue';
 import JobsTab from './components/Jobs/JobsTab.vue';
 import PurchaseOrdersTab from './components/PurchaseOrders/PurchaseOrdersTab.vue';
+import TemplatesTab from './components/Templates/TemplatesTab.vue';
+import SettingsView from './components/Settings/SettingsView.vue';
 
 // Create router
 const router = createRouter({
@@ -46,6 +48,16 @@ const router = createRouter({
       path: '/purchase-orders',
       name: 'PurchaseOrders',
       component: PurchaseOrdersTab
+    },
+    {
+      path: '/templates',
+      name: 'Templates',
+      component: TemplatesTab
+    },
+    {
+      path: '/settings',
+      name: 'Settings',
+      component: SettingsView
     }
   ]
 });

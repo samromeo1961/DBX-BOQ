@@ -1,15 +1,16 @@
 <template>
   <div class="searchable-select" ref="dropdownContainer">
-    <div class="select-input" @click="toggleDropdown">
+    <div class="select-input" @click="!disabled && toggleDropdown()">
       <input
         type="text"
         class="form-control"
         :placeholder="displayValue || placeholder"
         v-model="searchQuery"
-        @focus="showDropdown = true"
+        @focus="!disabled && (showDropdown = true)"
         @input="onSearch"
         ref="searchInput"
         :class="{ 'has-value': !!modelValue }"
+        :disabled="disabled"
       />
       <span class="dropdown-toggle-icon">
         <i class="bi" :class="showDropdown ? 'bi-chevron-up' : 'bi-chevron-down'"></i>
@@ -76,6 +77,10 @@ const props = defineProps({
   clearLabel: {
     type: String,
     default: 'Clear Selection'
+  },
+  disabled: {
+    type: Boolean,
+    default: false
   }
 });
 
@@ -100,15 +105,23 @@ const displayValue = computed(() => {
 });
 
 // Filter options based on search query
+// Supports searching any word in any order (e.g., "smith john" matches "John Smith & Associates")
 const filteredOptions = computed(() => {
   if (!searchQuery.value) {
     return props.options;
   }
 
-  const query = searchQuery.value.toLowerCase();
+  // Split search query into individual words
+  const searchWords = searchQuery.value.toLowerCase().trim().split(/\s+/).filter(word => word.length > 0);
+
+  if (searchWords.length === 0) {
+    return props.options;
+  }
+
   return props.options.filter(option => {
     const label = getItemLabel(option).toLowerCase();
-    return label.includes(query);
+    // Check if ALL search words are found in the label (in any order)
+    return searchWords.every(word => label.includes(word));
   });
 });
 

@@ -19,6 +19,8 @@ const purchaseOrdersHandlers = require('./src/ipc-handlers/purchase-orders');
 const contactsHandlers = require('./src/ipc-handlers/contacts');
 const boqOptionsStore = require('./src/database/boq-options-store');
 const credentialsStore = require('./src/database/credentials-store');
+const importTemplatesStore = require('./src/database/import-templates-store');
+const globalSettingsHandlers = require('./src/ipc-handlers/global-settings');
 
 // Initialize electron-store for settings
 const store = new Store();
@@ -297,6 +299,41 @@ ipcMain.handle('boq-options:reset', () => boqOptionsStore.resetOptions());
 ipcMain.handle('boq-options:get-defaults', () => boqOptionsStore.getDefaults());
 ipcMain.handle('boq-options:save-last-used', (event, lastUsed) => boqOptionsStore.saveLastUsed(lastUsed));
 
+// Import Templates
+ipcMain.handle('import-templates:get-all', () => importTemplatesStore.getTemplates());
+ipcMain.handle('import-templates:get', (event, id) => importTemplatesStore.getTemplate(id));
+ipcMain.handle('import-templates:save', (event, template) => importTemplatesStore.saveTemplate(template));
+ipcMain.handle('import-templates:delete', (event, id) => importTemplatesStore.deleteTemplate(id));
+
+// Global Settings - Companies
+ipcMain.handle('settings:get-companies', () => globalSettingsHandlers.getCompanies());
+ipcMain.handle('settings:get-company', (event, id) => globalSettingsHandlers.getCompany(id));
+ipcMain.handle('settings:get-current-company', () => globalSettingsHandlers.getCurrentCompany());
+ipcMain.handle('settings:save-company', (event, company) => globalSettingsHandlers.saveCompany(company));
+ipcMain.handle('settings:delete-company', (event, id) => globalSettingsHandlers.deleteCompany(id));
+ipcMain.handle('settings:switch-company', (event, id) => globalSettingsHandlers.switchCompany(id));
+
+// Global Settings - Users
+ipcMain.handle('settings:get-users', () => globalSettingsHandlers.getUsers());
+ipcMain.handle('settings:get-user', (event, id) => globalSettingsHandlers.getUser(id));
+ipcMain.handle('settings:get-current-user', () => globalSettingsHandlers.getCurrentUser());
+ipcMain.handle('settings:save-user', (event, user) => globalSettingsHandlers.saveUser(user));
+ipcMain.handle('settings:delete-user', (event, id) => globalSettingsHandlers.deleteUser(id));
+ipcMain.handle('settings:login-user', (event, username, password) => globalSettingsHandlers.loginUser(username, password));
+ipcMain.handle('settings:logout-user', () => globalSettingsHandlers.logoutUser());
+
+// Global Settings - Application Settings
+ipcMain.handle('settings:get-application-defaults', () => globalSettingsHandlers.getApplicationDefaults());
+ipcMain.handle('settings:update-application-defaults', (event, defaults) => globalSettingsHandlers.updateApplicationDefaults(defaults));
+ipcMain.handle('settings:get-import-export-settings', () => globalSettingsHandlers.getImportExportSettings());
+ipcMain.handle('settings:update-import-export-settings', (event, settings) => globalSettingsHandlers.updateImportExportSettings(settings));
+ipcMain.handle('settings:get-pdf-settings', () => globalSettingsHandlers.getPdfSettings());
+ipcMain.handle('settings:update-pdf-settings', (event, settings) => globalSettingsHandlers.updatePdfSettings(settings));
+ipcMain.handle('settings:get-ui-preferences', () => globalSettingsHandlers.getUiPreferences());
+ipcMain.handle('settings:update-ui-preferences', (event, preferences) => globalSettingsHandlers.updateUiPreferences(preferences));
+ipcMain.handle('settings:get-all', () => globalSettingsHandlers.getAllSettings());
+ipcMain.handle('settings:reset-all', () => globalSettingsHandlers.resetAllSettings());
+
 // ============================================================
 // IPC Handlers - Jobs (from Job database)
 // ============================================================
@@ -387,6 +424,7 @@ ipcMain.handle('catalogue:get-per-codes', () => catalogueHandlers.getPerCodes())
 ipcMain.handle('catalogue:update-item', (event, item) => catalogueHandlers.updateCatalogueItem(item));
 ipcMain.handle('catalogue:add-item', (event, item) => catalogueHandlers.addCatalogueItem(item));
 ipcMain.handle('catalogue:delete-items', (event, priceCodes) => catalogueHandlers.deleteCatalogueItems(priceCodes));
+ipcMain.handle('catalogue:get-item-usage', catalogueHandlers.getItemUsage);
 ipcMain.handle('catalogue:export-csv', (event, params) => catalogueHandlers.exportCatalogueToCSV(params));
 ipcMain.handle('catalogue:add-recipe-component', (event, mainItem, subItem, quantity) => catalogueHandlers.addRecipeComponent(mainItem, subItem, quantity));
 ipcMain.handle('catalogue:update-recipe-component', (event, mainItem, subItem, quantity) => catalogueHandlers.updateRecipeComponent(mainItem, subItem, quantity));
@@ -407,6 +445,9 @@ ipcMain.handle('catalogue:delete-estimate-price', (event, priceCode, priceLevel,
 // Bulk Price Changes
 ipcMain.handle('catalogue:get-bulk-price-items', (event, criteria) => catalogueHandlers.getBulkPriceItems(criteria));
 ipcMain.handle('catalogue:apply-bulk-price-changes', (event, data) => catalogueHandlers.applyBulkPriceChanges(data));
+
+// Import
+ipcMain.handle('catalogue:import-items', (event, data) => catalogueHandlers.importItems(data));
 
 // ============================================================
 // IPC Handlers - Purchase Orders

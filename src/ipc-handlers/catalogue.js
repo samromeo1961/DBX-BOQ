@@ -1863,6 +1863,747 @@ async function applyBulkSupplierPriceChanges(data, pool, dbConfig) {
   }
 }
 
+/**
+ * Import catalogue items from external file
+ * @param {Object} data - Import data
+ * @param {string} data.importType - 'supplierPrices' | 'catalogueItems' | 'estimatePrices'
+ * @param {string} data.supplier - Supplier code (for supplierPrices)
+ * @param {string} data.priceLevel - Price level 1-5 (for estimatePrices)
+ * @param {Array<Object>} data.items - Array of items to import
+ * @param {boolean} data.createNewItems - Whether to create new catalogue items
+ * @param {boolean} data.updateDescriptions - Whether to update existing descriptions
+ * @param {boolean} data.updatePrices - Whether to update existing prices
+ */
+async function importItems(data) {
+  try {
+    const pool = getPool();
+    if (!pool) {
+      return { success: false, message: 'Database not connected' };
+    }
+
+    const dbConfig = credentialsStore.getCredentials();
+    if (!dbConfig) {
+      return { success: false, message: 'No database configuration found' };
+    }
+
+    const {
+      importType,
+      supplier,
+      priceLevel,
+      items = [],
+      createNewItems = true,
+      updateDescriptions = false,
+      updatePrices = true
+    } = data;
+
+    if (!items || items.length === 0) {
+      return { success: false, message: 'No items to import' };
+    }
+
+    console.log(`🔄 Starting import: ${importType}, ${items.length} items`);
+
+    // Route to appropriate import handler
+    if (importType === 'supplierPrices') {
+      return await importSupplierPrices(data, pool, dbConfig);
+    } else if (importType === 'catalogueItems') {
+      return await importCatalogueItems(data, pool, dbConfig);
+    } else if (importType === 'estimatePrices') {
+      return await importEstimatePrices(data, pool, dbConfig);
+    } else {
+      return { success: false, message: `Unknown import type: ${importType}` };
+    }
+
+  } catch (error) {
+    console.error('Error importing items:', error);
+    return {
+      success: false,
+      message: error.message
+    };
+  }
+}
+
+/**
+ * Import supplier prices to SuppliersPrices table
+ */
+async function importSupplierPrices(data, pool, dbConfig) {
+  try {
+    const { supplier, items, createNewItems, updatePrices } = data;
+
+    if (!supplier) {
+      return { success: false, message: 'Supplier is required for supplier price import' };
+    }
+
+    const suppliersPricesTable = qualifyTable('SuppliersPrices', dbConfig);
+    const priceListTable = qualifyTable('PriceList', dbConfig);
+    const perCodesTable = qualifyTable('PerCodes', dbConfig);
+
+    let successCount = 0;
+    let createdCount = 0;
+    let updatedCount = 0;
+    let skippedCount = 0;
+    const errors = [];
+
+    for (const item of items) {
+      try {
+        const {
+          reference,
+          description,
+          linkTo,
+          price,
+          unit,
+          costCentre,
+          validFrom,
+          comments
+        } = item;
+
+        // Determine the catalogue item code (linkTo takes priority)
+        const catalogueItemCode = linkTo || reference;
+
+        if (!catalogueItemCode) {
+          errors.push({ reference, error: 'No catalogue item code specified' });
+          skippedCount++;
+          continue;
+        }
+
+        // Check if the catalogue item exists in PriceList
+        const checkCatalogueQuery = `
+          SELECT COUNT(*) as count
+          FROM ${priceListTable}
+          WHERE PriceCode = @catalogueItemCode
+        `;
+
+        const catalogueCheck = await pool.request()
+          .input('catalogueItemCode', catalogueItemCode)
+          .query(checkCatalogueQuery);
+
+        const catalogueExists = catalogueCheck.recordset[0].count > 0;
+
+        // If catalogue item doesn't exist and we can't create new items, skip
+        if (!catalogueExists && !createNewItems) {
+          errors.push({ reference, error: 'Catalogue item not found and createNewItems is false' });
+          skippedCount++;
+          continue;
+        }
+
+        // Create catalogue item if needed
+        if (!catalogueExists && createNewItems) {
+          // Get PerCode from unit
+          let perCode = null;
+          if (unit) {
+            const perCodeQuery = `SELECT Code FROM ${perCodesTable} WHERE Printout = @unit`;
+            const perCodeResult = await pool.request()
+              .input('unit', unit)
+              .query(perCodeQuery);
+
+            if (perCodeResult.recordset.length > 0) {
+              perCode = perCodeResult.recordset[0].Code;
+            }
+          }
+
+          const insertCatalogueQuery = `
+            INSERT INTO ${priceListTable} (PriceCode, Description, CostCentre, PerCode, Archived)
+            VALUES (@priceCode, @description, @costCentre, @perCode, 0)
+          `;
+
+          await pool.request()
+            .input('priceCode', catalogueItemCode)
+            .input('description', description || reference)
+            .input('costCentre', costCentre || '')
+            .input('perCode', perCode)
+            .query(insertCatalogueQuery);
+
+          createdCount++;
+          console.log(`✅ Created catalogue item: ${catalogueItemCode}`);
+        }
+
+        // Check if supplier price record exists
+        const checkSupplierPriceQuery = `
+          SELECT COUNT(*) as count
+          FROM ${suppliersPricesTable}
+          WHERE Supplier = @supplier AND ItemCode = @itemCode
+        `;
+
+        const supplierPriceCheck = await pool.request()
+          .input('supplier', supplier)
+          .input('itemCode', catalogueItemCode)
+          .query(checkSupplierPriceQuery);
+
+        const supplierPriceExists = supplierPriceCheck.recordset[0].count > 0;
+
+        if (supplierPriceExists) {
+          // Update existing supplier price
+          if (updatePrices) {
+            const updateQuery = `
+              UPDATE ${suppliersPricesTable}
+              SET
+                Price = @price,
+                Supp_Date = @suppDate,
+                Reference = @reference,
+                Comments = @comments
+              WHERE Supplier = @supplier AND ItemCode = @itemCode
+            `;
+
+            await pool.request()
+              .input('supplier', supplier)
+              .input('itemCode', catalogueItemCode)
+              .input('price', price || 0)
+              .input('suppDate', validFrom || new Date())
+              .input('reference', reference || '')
+              .input('comments', comments || '')
+              .query(updateQuery);
+
+            updatedCount++;
+          } else {
+            skippedCount++;
+          }
+        } else {
+          // Insert new supplier price
+          const insertQuery = `
+            INSERT INTO ${suppliersPricesTable} (Supplier, ItemCode, Price, Supp_Date, Reference, Comments)
+            VALUES (@supplier, @itemCode, @price, @suppDate, @reference, @comments)
+          `;
+
+          await pool.request()
+            .input('supplier', supplier)
+            .input('itemCode', catalogueItemCode)
+            .input('price', price || 0)
+            .input('suppDate', validFrom || new Date())
+            .input('reference', reference || '')
+            .input('comments', comments || '')
+            .query(insertQuery);
+
+          successCount++;
+        }
+
+      } catch (error) {
+        console.error(`Error importing supplier price for ${item.reference}:`, error);
+        errors.push({
+          reference: item.reference,
+          error: error.message
+        });
+      }
+    }
+
+    const totalSuccess = successCount + updatedCount + createdCount;
+
+    console.log(`✅ Supplier price import complete: ${totalSuccess} success, ${errors.length} errors`);
+
+    return {
+      success: true,
+      data: {
+        successCount: totalSuccess,
+        createdCount,
+        updatedCount,
+        skippedCount,
+        errorCount: errors.length,
+        errors
+      },
+      message: errors.length > 0
+        ? `Imported ${totalSuccess} supplier prices with ${errors.length} errors`
+        : `Successfully imported ${totalSuccess} supplier prices`
+    };
+
+  } catch (error) {
+    console.error('Error importing supplier prices:', error);
+    return {
+      success: false,
+      message: error.message
+    };
+  }
+}
+
+/**
+ * Import catalogue items to PriceList table
+ */
+async function importCatalogueItems(data, pool, dbConfig) {
+  try {
+    const { items, createNewItems, updateDescriptions, updatePrices } = data;
+
+    const priceListTable = qualifyTable('PriceList', dbConfig);
+    const pricesTable = qualifyTable('Prices', dbConfig);
+    const perCodesTable = qualifyTable('PerCodes', dbConfig);
+
+    let successCount = 0;
+    let createdCount = 0;
+    let updatedCount = 0;
+    let skippedCount = 0;
+    const errors = [];
+
+    for (const item of items) {
+      try {
+        const {
+          reference,
+          description,
+          unit,
+          costCentre,
+          price
+        } = item;
+
+        if (!reference) {
+          errors.push({ reference: 'N/A', error: 'No price code specified' });
+          skippedCount++;
+          continue;
+        }
+
+        // Get PerCode from unit
+        let perCode = null;
+        if (unit) {
+          const perCodeQuery = `SELECT Code FROM ${perCodesTable} WHERE Printout = @unit`;
+          const perCodeResult = await pool.request()
+            .input('unit', unit)
+            .query(perCodeQuery);
+
+          if (perCodeResult.recordset.length > 0) {
+            perCode = perCodeResult.recordset[0].Code;
+          }
+        }
+
+        // Check if item exists
+        const checkQuery = `
+          SELECT COUNT(*) as count
+          FROM ${priceListTable}
+          WHERE PriceCode = @priceCode
+        `;
+
+        const checkResult = await pool.request()
+          .input('priceCode', reference)
+          .query(checkQuery);
+
+        const itemExists = checkResult.recordset[0].count > 0;
+
+        if (itemExists) {
+          // Update existing item
+          if (updateDescriptions) {
+            const updateQuery = `
+              UPDATE ${priceListTable}
+              SET
+                Description = @description,
+                CostCentre = @costCentre,
+                PerCode = @perCode
+              WHERE PriceCode = @priceCode
+            `;
+
+            await pool.request()
+              .input('priceCode', reference)
+              .input('description', description || reference)
+              .input('costCentre', costCentre || '')
+              .input('perCode', perCode)
+              .query(updateQuery);
+
+            updatedCount++;
+          }
+
+          // Update price if specified and updatePrices is true
+          if (price != null && updatePrices) {
+            // Check if Price1 exists
+            const checkPriceQuery = `
+              SELECT COUNT(*) as count
+              FROM ${pricesTable}
+              WHERE PriceCode = @priceCode AND PriceLevel = 1
+            `;
+
+            const priceCheck = await pool.request()
+              .input('priceCode', reference)
+              .query(checkPriceQuery);
+
+            if (priceCheck.recordset[0].count > 0) {
+              // Update
+              await pool.request()
+                .input('priceCode', reference)
+                .input('price', price)
+                .query(`UPDATE ${pricesTable} SET Price = @price WHERE PriceCode = @priceCode AND PriceLevel = 1`);
+            } else {
+              // Insert
+              await pool.request()
+                .input('priceCode', reference)
+                .input('price', price)
+                .query(`INSERT INTO ${pricesTable} (PriceCode, PriceLevel, Price) VALUES (@priceCode, 1, @price)`);
+            }
+          }
+
+          if (!updateDescriptions) {
+            skippedCount++;
+          }
+
+        } else if (createNewItems) {
+          // Create new item
+          const insertQuery = `
+            INSERT INTO ${priceListTable} (PriceCode, Description, CostCentre, PerCode, Archived)
+            VALUES (@priceCode, @description, @costCentre, @perCode, 0)
+          `;
+
+          await pool.request()
+            .input('priceCode', reference)
+            .input('description', description || reference)
+            .input('costCentre', costCentre || '')
+            .input('perCode', perCode)
+            .query(insertQuery);
+
+          createdCount++;
+
+          // Insert price if specified
+          if (price != null) {
+            await pool.request()
+              .input('priceCode', reference)
+              .input('price', price)
+              .query(`INSERT INTO ${pricesTable} (PriceCode, PriceLevel, Price) VALUES (@priceCode, 1, @price)`);
+          }
+
+          console.log(`✅ Created catalogue item: ${reference}`);
+        } else {
+          skippedCount++;
+        }
+
+        successCount++;
+
+      } catch (error) {
+        console.error(`Error importing catalogue item ${item.reference}:`, error);
+        errors.push({
+          reference: item.reference,
+          error: error.message
+        });
+      }
+    }
+
+    console.log(`✅ Catalogue item import complete: ${successCount} success, ${errors.length} errors`);
+
+    return {
+      success: true,
+      data: {
+        successCount,
+        createdCount,
+        updatedCount,
+        skippedCount,
+        errorCount: errors.length,
+        errors
+      },
+      message: errors.length > 0
+        ? `Imported ${successCount} catalogue items with ${errors.length} errors`
+        : `Successfully imported ${successCount} catalogue items`
+    };
+
+  } catch (error) {
+    console.error('Error importing catalogue items:', error);
+    return {
+      success: false,
+      message: error.message
+    };
+  }
+}
+
+/**
+ * Import estimate prices to Prices table
+ */
+async function importEstimatePrices(data, pool, dbConfig) {
+  try {
+    const { items, priceLevel, createNewItems, updatePrices } = data;
+
+    if (!priceLevel) {
+      return { success: false, message: 'Price level is required for estimate price import' };
+    }
+
+    const priceListTable = qualifyTable('PriceList', dbConfig);
+    const pricesTable = qualifyTable('Prices', dbConfig);
+    const perCodesTable = qualifyTable('PerCodes', dbConfig);
+    const dbName = dbConfig.database;
+
+    // Check if optional columns exist in Prices table
+    const checkOptionalColumns = await pool.request().query(`
+      SELECT COLUMN_NAME
+      FROM [${dbName}].INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_NAME = 'Prices'
+        AND TABLE_SCHEMA = 'dbo'
+        AND COLUMN_NAME IN ('Estimator', 'Notes', 'CreatedDate')
+    `);
+
+    const hasEstimator = checkOptionalColumns.recordset.some(c => c.COLUMN_NAME === 'Estimator');
+    const hasNotes = checkOptionalColumns.recordset.some(c => c.COLUMN_NAME === 'Notes');
+    const hasCreatedDate = checkOptionalColumns.recordset.some(c => c.COLUMN_NAME === 'CreatedDate');
+
+    let successCount = 0;
+    let createdCount = 0;
+    let updatedCount = 0;
+    let skippedCount = 0;
+    const errors = [];
+
+    for (const item of items) {
+      try {
+        const {
+          reference,
+          description,
+          linkTo,
+          price,
+          unit,
+          costCentre,
+          validFrom,
+          comments
+        } = item;
+
+        // Determine the catalogue item code (linkTo takes priority)
+        const catalogueItemCode = linkTo || reference;
+
+        if (!catalogueItemCode) {
+          errors.push({ reference, error: 'No catalogue item code specified' });
+          skippedCount++;
+          continue;
+        }
+
+        // Check if the catalogue item exists
+        const checkCatalogueQuery = `
+          SELECT COUNT(*) as count
+          FROM ${priceListTable}
+          WHERE PriceCode = @catalogueItemCode
+        `;
+
+        const catalogueCheck = await pool.request()
+          .input('catalogueItemCode', catalogueItemCode)
+          .query(checkCatalogueQuery);
+
+        const catalogueExists = catalogueCheck.recordset[0].count > 0;
+
+        // Create catalogue item if needed
+        if (!catalogueExists && createNewItems) {
+          // Get PerCode from unit
+          let perCode = null;
+          if (unit) {
+            const perCodeQuery = `SELECT Code FROM ${perCodesTable} WHERE Printout = @unit`;
+            const perCodeResult = await pool.request()
+              .input('unit', unit)
+              .query(perCodeQuery);
+
+            if (perCodeResult.recordset.length > 0) {
+              perCode = perCodeResult.recordset[0].Code;
+            }
+          }
+
+          const insertCatalogueQuery = `
+            INSERT INTO ${priceListTable} (PriceCode, Description, CostCentre, PerCode, Archived)
+            VALUES (@priceCode, @description, @costCentre, @perCode, 0)
+          `;
+
+          await pool.request()
+            .input('priceCode', catalogueItemCode)
+            .input('description', description || reference)
+            .input('costCentre', costCentre || '')
+            .input('perCode', perCode)
+            .query(insertCatalogueQuery);
+
+          createdCount++;
+          console.log(`✅ Created catalogue item: ${catalogueItemCode}`);
+        } else if (!catalogueExists) {
+          errors.push({ reference, error: 'Catalogue item not found and createNewItems is false' });
+          skippedCount++;
+          continue;
+        }
+
+        // Check if price record exists for this level and date
+        const effectiveDate = validFrom || new Date().toISOString().split('T')[0];
+        const checkPriceQuery = `
+          SELECT COUNT(*) as count
+          FROM ${pricesTable}
+          WHERE PriceCode = @priceCode
+            AND PriceLevel = @priceLevel
+            AND Date = @validFrom
+        `;
+
+        const priceCheck = await pool.request()
+          .input('priceCode', catalogueItemCode)
+          .input('priceLevel', parseInt(priceLevel))
+          .input('validFrom', effectiveDate)
+          .query(checkPriceQuery);
+
+        const priceExists = priceCheck.recordset[0].count > 0;
+
+        if (priceExists && updatePrices) {
+          // Update existing price
+          const setClause = ['Price = @price'];
+          const request = pool.request()
+            .input('priceCode', catalogueItemCode)
+            .input('priceLevel', parseInt(priceLevel))
+            .input('validFrom', effectiveDate)
+            .input('price', price || 0);
+
+          if (hasNotes && comments) {
+            setClause.push('Notes = @notes');
+            request.input('notes', comments);
+          }
+
+          const updateQuery = `
+            UPDATE ${pricesTable}
+            SET ${setClause.join(', ')}
+            WHERE PriceCode = @priceCode
+              AND PriceLevel = @priceLevel
+              AND Date = @validFrom
+          `;
+
+          await request.query(updateQuery);
+          updatedCount++;
+
+        } else if (!priceExists) {
+          // Insert new price
+          const columns = ['PriceCode', 'PriceLevel', 'Price', 'Date'];
+          const values = ['@priceCode', '@priceLevel', '@price', '@validFrom'];
+          const request = pool.request()
+            .input('priceCode', catalogueItemCode)
+            .input('priceLevel', parseInt(priceLevel))
+            .input('price', price || 0)
+            .input('validFrom', effectiveDate);
+
+          if (hasNotes && comments) {
+            columns.push('Notes');
+            values.push('@notes');
+            request.input('notes', comments);
+          }
+
+          if (hasCreatedDate) {
+            columns.push('CreatedDate');
+            values.push('GETDATE()');
+          }
+
+          const insertQuery = `
+            INSERT INTO ${pricesTable} (${columns.join(', ')})
+            VALUES (${values.join(', ')})
+          `;
+
+          await request.query(insertQuery);
+          successCount++;
+
+        } else {
+          skippedCount++;
+        }
+
+      } catch (error) {
+        console.error(`Error importing estimate price for ${item.reference}:`, error);
+        errors.push({
+          reference: item.reference,
+          error: error.message
+        });
+      }
+    }
+
+    const totalSuccess = successCount + updatedCount + createdCount;
+
+    console.log(`✅ Estimate price import complete: ${totalSuccess} success, ${errors.length} errors`);
+
+    return {
+      success: true,
+      data: {
+        successCount: totalSuccess,
+        createdCount,
+        updatedCount,
+        skippedCount,
+        errorCount: errors.length,
+        errors
+      },
+      message: errors.length > 0
+        ? `Imported ${totalSuccess} estimate prices with ${errors.length} errors`
+        : `Successfully imported ${totalSuccess} estimate prices`
+    };
+
+  } catch (error) {
+    console.error('Error importing estimate prices:', error);
+    return {
+      success: false,
+      message: error.message
+    };
+  }
+}
+
+/**
+ * Get item usage - where the item is used in recipes, BOQ, and purchase orders
+ * @param {Object} event - IPC event
+ * @param {string} priceCode - Item code to check usage for
+ */
+async function getItemUsage(event, priceCode) {
+  try {
+    const pool = getPool();
+    if (!pool) {
+      throw new Error('Database not connected');
+    }
+
+    const dbConfig = credentialsStore.getCredentials();
+    if (!dbConfig) {
+      throw new Error('No database configuration found');
+    }
+
+    const recipeTable = qualifyTable('Recipe', dbConfig);
+    const priceListTable = qualifyTable('PriceList', dbConfig);
+    const billTable = qualifyTable('Bill', dbConfig);
+    const orderDetailsTable = qualifyTable('OrderDetails', dbConfig);
+
+    // 1. Find where this item is used as an ingredient in recipes
+    const recipeUsageQuery = `
+      SELECT
+        R.Main_Item AS RecipeCode,
+        PL.Description AS RecipeName,
+        R.Quantity,
+        R.Formula
+      FROM ${recipeTable} R
+      INNER JOIN ${priceListTable} PL ON R.Main_Item = PL.PriceCode
+      WHERE R.Sub_Item = @priceCode
+      ORDER BY PL.Description
+    `;
+
+    const recipeUsageResult = await pool.request()
+      .input('priceCode', priceCode)
+      .query(recipeUsageQuery);
+
+    // 2. Find where this item is used in Bill of Quantities
+    const boqUsageQuery = `
+      SELECT
+        B.JobNo,
+        B.CostCentre,
+        B.BLoad,
+        B.LineNumber,
+        B.Quantity,
+        B.UnitPrice
+      FROM ${billTable} B
+      WHERE B.ItemCode = @priceCode
+      ORDER BY B.JobNo, B.CostCentre, B.BLoad, B.LineNumber
+    `;
+
+    const boqUsageResult = await pool.request()
+      .input('priceCode', priceCode)
+      .query(boqUsageQuery);
+
+    // 3. Find where this item is in purchase orders
+    const poUsageQuery = `
+      SELECT
+        OD.JobNo,
+        OD.CostCentre,
+        OD.BLoad,
+        OD.Counter,
+        OD.Description,
+        OD.Quantity,
+        OD.QtyReceived,
+        OD.LinePrice,
+        OD.Invoice
+      FROM ${orderDetailsTable} OD
+      WHERE OD.Code = @priceCode
+      ORDER BY OD.JobNo, OD.CostCentre, OD.BLoad, OD.Counter
+    `;
+
+    const poUsageResult = await pool.request()
+      .input('priceCode', priceCode)
+      .query(poUsageQuery);
+
+    return {
+      success: true,
+      data: {
+        recipes: recipeUsageResult.recordset || [],
+        boq: boqUsageResult.recordset || [],
+        purchaseOrders: poUsageResult.recordset || []
+      }
+    };
+  } catch (error) {
+    console.error('Error getting item usage:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
 module.exports = {
   getCatalogueItems,
   getCatalogueItem,
@@ -1882,5 +2623,7 @@ module.exports = {
   updateEstimatePrice,
   deleteEstimatePrice,
   getBulkPriceItems,
-  applyBulkPriceChanges
+  applyBulkPriceChanges,
+  importItems,
+  getItemUsage
 };

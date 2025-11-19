@@ -3,7 +3,11 @@ const { qualifyTable } = require('../database/query-builder');
 const credentialsStore = require('../database/credentials-store');
 
 /**
- * Ensure SuppliersPrices table exists with all required columns
+ * Ensure SuppliersPrices table exists - DO NOT ALTER existing Databuild tables
+ * The SuppliersPrices table is an existing Databuild table with columns:
+ * - Supp_Date (use instead of ValidFrom)
+ * - Comments, PriceLevel, Area (already exist)
+ * - NO LastUpdated (don't add to existing table)
  */
 async function ensureSuppliersPricesColumns() {
   try {
@@ -15,97 +19,54 @@ async function ensureSuppliersPricesColumns() {
 
     const systemDbName = getSystemDatabaseName(dbConfig);
 
+    console.log(`🔍 Checking for SuppliersPrices table in database: ${systemDbName}`);
+
     // Check if table exists
     const checkTable = await pool.request().query(`
-      SELECT TABLE_NAME
+      SELECT TABLE_NAME, TABLE_SCHEMA
       FROM [${systemDbName}].INFORMATION_SCHEMA.TABLES
       WHERE TABLE_NAME = 'SuppliersPrices'
         AND TABLE_SCHEMA = 'dbo'
     `);
 
+    console.log(`📊 Table check result:`, checkTable.recordset);
+
     if (checkTable.recordset.length === 0) {
-      // Table doesn't exist - create it
-      console.log('📦 Creating SuppliersPrices table...');
-
-      try {
-        await pool.request().query(`
-          CREATE TABLE [${systemDbName}].[dbo].[SuppliersPrices] (
-            [ItemCode] VARCHAR(50) NOT NULL,
-            [Supplier] VARCHAR(50) NOT NULL,
-            [Reference] VARCHAR(100) NULL,
-            [Price] DECIMAL(18, 2) NOT NULL DEFAULT 0,
-            [ValidFrom] DATETIME NULL,
-            [Comments] VARCHAR(255) NULL,
-            [PriceLevel] INT NULL DEFAULT 0,
-            [Area] VARCHAR(50) NULL,
-            [LastUpdated] DATETIME NULL DEFAULT GETDATE(),
-            CONSTRAINT [PK_SuppliersPrices] PRIMARY KEY CLUSTERED
-            (
-              [ItemCode] ASC,
-              [Supplier] ASC
-            )
-          );
-
-          CREATE NONCLUSTERED INDEX [IX_SuppliersPrices_Reference]
-          ON [${systemDbName}].[dbo].[SuppliersPrices] ([Reference])
-          WHERE [Reference] IS NOT NULL;
-        `);
-        console.log('✅ SuppliersPrices table created successfully');
-        return true;
-      } catch (createErr) {
-        console.error('⚠️  Failed to create SuppliersPrices table:', createErr.message);
-        return false;
-      }
+      console.log('⚠️  SuppliersPrices table does not exist in Databuild.');
+      console.log('   This is an existing Databuild table - it should already exist.');
+      console.log('   Please check your Databuild installation.');
+      return false;
     }
 
-    // Table exists - check for optional columns
+    // Table exists - verify it has the expected Databuild columns
+    console.log(`🔍 Verifying columns in [${systemDbName}].[dbo].[SuppliersPrices]`);
+
     const checkColumns = await pool.request().query(`
       SELECT COLUMN_NAME
       FROM [${systemDbName}].INFORMATION_SCHEMA.COLUMNS
       WHERE TABLE_NAME = 'SuppliersPrices'
         AND TABLE_SCHEMA = 'dbo'
-        AND COLUMN_NAME IN ('ValidFrom', 'Comments', 'PriceLevel', 'Area', 'LastUpdated')
+        AND COLUMN_NAME IN ('Supp_Date', 'Comments', 'PriceLevel', 'Area', 'ItemCode', 'Supplier', 'Price', 'Reference')
     `);
 
     const existingColumns = checkColumns.recordset.map(row => row.COLUMN_NAME);
-    const columnsToAdd = [];
+    console.log(`📋 Databuild columns found:`, existingColumns);
 
-    // Define columns that should exist
-    const optionalColumns = {
-      'ValidFrom': 'DATETIME NULL',
-      'Comments': 'VARCHAR(255) NULL',
-      'PriceLevel': 'INT NULL DEFAULT 0',
-      'Area': 'VARCHAR(50) NULL',
-      'LastUpdated': 'DATETIME NULL DEFAULT GETDATE()'
-    };
+    // Check for required columns
+    const requiredColumns = ['ItemCode', 'Supplier', 'Price'];
+    const missingRequired = requiredColumns.filter(col => !existingColumns.includes(col));
 
-    // Check which columns need to be added
-    for (const [columnName, columnDef] of Object.entries(optionalColumns)) {
-      if (!existingColumns.includes(columnName)) {
-        columnsToAdd.push({ name: columnName, def: columnDef });
-      }
+    if (missingRequired.length > 0) {
+      console.error(`⚠️  Missing required columns: ${missingRequired.join(', ')}`);
+      return false;
     }
 
-    // Add missing columns
-    if (columnsToAdd.length > 0) {
-      console.log(`Adding ${columnsToAdd.length} optional columns to SuppliersPrices table...`);
-
-      for (const col of columnsToAdd) {
-        try {
-          await pool.request().query(`
-            ALTER TABLE [${systemDbName}].[dbo].[SuppliersPrices]
-            ADD [${col.name}] ${col.def}
-          `);
-          console.log(`✅ Added column: SuppliersPrices.${col.name}`);
-        } catch (err) {
-          console.error(`⚠️  Failed to add column ${col.name}:`, err.message);
-        }
-      }
-    }
+    console.log(`✓ SuppliersPrices table verified with existing Databuild schema`);
+    console.log(`  Note: Using Supp_Date column for date tracking (Databuild standard)`);
 
     return true;
   } catch (error) {
-    console.error('Error ensuring SuppliersPrices table:', error);
+    console.error('Error checking SuppliersPrices table:', error);
     return false;
   }
 }
@@ -133,18 +94,17 @@ async function getSupplierPrices(itemCode) {
       SELECT
         sp.ItemCode,
         sp.Supplier,
-        s.Name AS SupplierName,
+        s.SupplierName,
         sp.Reference,
         sp.Price,
-        sp.ValidFrom,
+        sp.Supp_Date AS ValidFrom,
         sp.Comments,
         sp.PriceLevel,
-        sp.Area,
-        sp.LastUpdated
+        sp.Area
       FROM ${suppliersPricesTable} sp
-      LEFT JOIN ${supplierTable} s ON sp.Supplier = s.Code
+      LEFT JOIN ${supplierTable} s ON sp.Supplier = s.Supplier_Code
       WHERE sp.ItemCode = @itemCode
-      ORDER BY s.Name, sp.ValidFrom DESC
+      ORDER BY s.SupplierName, sp.Supp_Date DESC
     `;
 
     const result = await pool.request()
@@ -160,6 +120,98 @@ async function getSupplierPrices(itemCode) {
   } catch (error) {
     console.error('Error getting supplier prices:', error);
     return { success: false, message: error.message, data: [] };
+  }
+}
+
+/**
+ * Auto-add supplier to nominated supplier list (NominatedSupplier) for item's cost centre
+ * @param {string} itemCode - Catalogue item code
+ * @param {string} supplierCode - Supplier code
+ */
+async function autoAddToNominatedSuppliers(itemCode, supplierCode) {
+  console.log(`🔍 Auto-add to nominated suppliers: itemCode=${itemCode}, supplier=${supplierCode}`);
+
+  try {
+    const pool = getPool();
+    if (!pool) {
+      console.log('❌ No database pool available');
+      return;
+    }
+
+    const dbConfig = credentialsStore.getCredentials();
+    if (!dbConfig) {
+      console.log('❌ No database credentials available');
+      return;
+    }
+
+    const priceListTable = qualifyTable('PriceList', dbConfig);
+    const nominatedSupplierTable = qualifyTable('NominatedSupplier', dbConfig);
+
+    console.log(`📋 Tables: PriceList=${priceListTable}, NominatedSupplier=${nominatedSupplierTable}`);
+
+    // Get the cost centre for this catalogue item
+    const costCentreQuery = `
+      SELECT CostCentre
+      FROM ${priceListTable}
+      WHERE PriceCode = @itemCode
+    `;
+
+    console.log(`🔍 Looking up cost centre for item ${itemCode}...`);
+    const costCentreResult = await pool.request()
+      .input('itemCode', itemCode)
+      .query(costCentreQuery);
+
+    console.log(`📊 Cost centre query result:`, costCentreResult.recordset);
+
+    if (costCentreResult.recordset.length === 0 || !costCentreResult.recordset[0].CostCentre) {
+      console.log(`⚠️  No cost centre found for item ${itemCode}, skipping nominated supplier auto-add`);
+      return;
+    }
+
+    const costCentre = costCentreResult.recordset[0].CostCentre;
+    console.log(`✓ Cost centre found: ${costCentre}`);
+
+    // Check if supplier is already nominated for this cost centre
+    const checkQuery = `
+      SELECT CostCentre, Code
+      FROM ${nominatedSupplierTable}
+      WHERE CostCentre = @costCentre AND Code = @supplier
+    `;
+
+    console.log(`🔍 Checking if supplier ${supplierCode} already nominated for cost centre ${costCentre}...`);
+    const checkResult = await pool.request()
+      .input('costCentre', costCentre)
+      .input('supplier', supplierCode)
+      .query(checkQuery);
+
+    console.log(`📊 Check result:`, checkResult.recordset);
+
+    if (checkResult.recordset.length > 0) {
+      console.log(`✓ Supplier ${supplierCode} already nominated for cost centre ${costCentre}`);
+      return;
+    }
+
+    // Add supplier to nominated list (Counter is auto-generated IDENTITY column)
+    const insertQuery = `
+      INSERT INTO ${nominatedSupplierTable} (CCBank, Code, CostCentre)
+      VALUES (@ccBank, @supplier, @costCentre)
+    `;
+
+    console.log(`💾 Inserting: CCBank=1, Code=${supplierCode}, CostCentre=${costCentre}`);
+
+    await pool.request()
+      .input('ccBank', 1)
+      .input('supplier', supplierCode)
+      .input('costCentre', costCentre)
+      .query(insertQuery);
+
+    console.log(`✅ Auto-added supplier ${supplierCode} to nominated list for cost centre ${costCentre}`);
+
+  } catch (error) {
+    console.error('❌ Error auto-adding to nominated suppliers:', error);
+    console.error('Error details:', error.message);
+    console.error('Error stack:', error.stack);
+    // Don't fail the main operation if this fails
   }
 }
 
@@ -194,9 +246,9 @@ async function addSupplierPrice(priceData) {
 
     const query = `
       INSERT INTO ${suppliersPricesTable}
-        (ItemCode, Supplier, Reference, Price, ValidFrom, Comments, PriceLevel, Area, LastUpdated)
+        (ItemCode, Supplier, Reference, Price, Supp_Date, Comments, PriceLevel, Area)
       VALUES
-        (@itemCode, @supplier, @reference, @price, @validFrom, @comments, @priceLevel, @area, GETDATE())
+        (@itemCode, @supplier, @reference, @price, @suppDate, @comments, @priceLevel, @area)
     `;
 
     await pool.request()
@@ -204,13 +256,16 @@ async function addSupplierPrice(priceData) {
       .input('supplier', supplier)
       .input('reference', reference || null)
       .input('price', price)
-      .input('validFrom', validFrom || new Date())
+      .input('suppDate', validFrom || new Date())
       .input('comments', comments || null)
       .input('priceLevel', priceLevel || 0)
       .input('area', area || null)
       .query(query);
 
     console.log(`✅ Added supplier price: ${itemCode} -> ${supplier}`);
+
+    // Auto-add supplier to nominated list for this item's cost centre
+    await autoAddToNominatedSuppliers(itemCode, supplier);
 
     return { success: true, message: 'Supplier price added successfully' };
 
@@ -257,11 +312,10 @@ async function updateSupplierPrice(priceData) {
         Supplier = @supplier,
         Reference = @reference,
         Price = @price,
-        ValidFrom = @validFrom,
+        Supp_Date = @suppDate,
         Comments = @comments,
         PriceLevel = @priceLevel,
-        Area = @area,
-        LastUpdated = GETDATE()
+        Area = @area
       WHERE ItemCode = @itemCode
         AND Supplier = @originalSupplier
         AND ISNULL(Reference, '') = ISNULL(@originalReference, '')
@@ -274,7 +328,7 @@ async function updateSupplierPrice(priceData) {
       .input('originalReference', originalReference || null)
       .input('reference', reference || null)
       .input('price', price)
-      .input('validFrom', validFrom || new Date())
+      .input('suppDate', validFrom || new Date())
       .input('comments', comments || null)
       .input('priceLevel', priceLevel || 0)
       .input('area', area || null)
@@ -359,10 +413,10 @@ async function getSuppliers() {
     const supplierTable = qualifyTable('Supplier', dbConfig);
 
     const query = `
-      SELECT Code, Name
+      SELECT Supplier_Code AS Code, SupplierName AS Name
       FROM ${supplierTable}
       WHERE Archived = 0
-      ORDER BY Name
+      ORDER BY SupplierName
     `;
 
     const result = await pool.request().query(query);

@@ -50,6 +50,18 @@
             Purchase Orders
           </router-link>
         </li>
+        <li class="nav-item">
+          <router-link to="/templates" class="nav-link" active-class="active">
+            <i class="bi bi-file-earmark-text me-1"></i>
+            Templates
+          </router-link>
+        </li>
+        <li class="nav-item ms-auto">
+          <router-link to="/settings" class="nav-link" active-class="active">
+            <i class="bi bi-gear me-1"></i>
+            Settings
+          </router-link>
+        </li>
       </ul>
     </nav>
 

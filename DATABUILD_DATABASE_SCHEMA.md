@@ -827,13 +827,18 @@ ORDER BY Date DESC
 | `ItemCode` | nvarchar(30) | Internal item code |
 | `Reference` | nvarchar(30) | Supplier's reference/part number |
 | `Price` | money | Supplier's price |
-| `Supp_Date` | datetime | Price date |
+| `Supp_Date` | datetime | Price validity date |
 | `Area` | nvarchar(24) | Geographic area |
-| `PriceLevel` | int | Price level |
+| `PriceLevel` | int | Price level (0=default, 1-5=custom) |
+| `Comments` | nvarchar(255) | Additional notes (e.g., variant info) |
+| `UDF1-UDF5` | nvarchar(255) | User-defined fields |
 
 **Usage:**
 - Display supplier's reference on purchase orders
 - Get supplier-specific pricing
+- Match items with workup text using Comments field
+
+**Note:** This is an existing Databuild table - DO NOT ALTER the schema
 
 ---
 

@@ -27,6 +27,10 @@
           <i class="bi bi-arrow-counterclockwise"></i>
           Unarchive ({{ selectedItems.length }})
         </button>
+        <button class="btn btn-sm btn-danger" @click="deleteSelected" title="Delete selected items permanently">
+          <i class="bi bi-trash"></i>
+          Delete ({{ selectedItems.length }})
+        </button>
       </div>
     </div>
 

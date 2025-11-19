@@ -38,6 +38,7 @@
             @manageRecipe="onManageRecipe"
             @archiveItems="onArchiveItems"
             @unarchiveItems="onUnarchiveItems"
+            @deleteItems="onDeleteItems"
             @rowClicked="onItemSelected"
           />
         </div>
@@ -102,6 +103,17 @@
                   Images
                 </button>
               </li>
+              <li class="nav-item">
+                <button
+                  class="nav-link"
+                  :class="{ active: activeTab === 'usage' }"
+                  @click="activeTab = 'usage'"
+                  type="button"
+                >
+                  <i class="bi bi-diagram-3 me-1"></i>
+                  Usage
+                </button>
+              </li>
               <li class="nav-item ms-auto">
                 <button
                   class="nav-link text-danger"
@@ -146,6 +158,12 @@
               <ImageGalleryPanel
                 :priceCode="selectedItemCode"
                 @updated="loadCatalogue"
+              />
+            </div>
+            <div v-if="activeTab === 'usage'" class="tab-pane active">
+              <UsagePanel
+                :itemCode="selectedItemCode"
+                :isVisible="activeTab === 'usage'"
               />
             </div>
           </div>
@@ -200,7 +218,7 @@
 
     <!-- Import Modal -->
     <CatalogueImportModal
-      v-if="showImportModal"
+      :show="showImportModal"
       @close="showImportModal = false"
       @imported="loadCatalogue"
     />
@@ -218,6 +236,14 @@
       :show="showBulkPriceModal"
       @close="showBulkPriceModal = false"
       @applied="loadCatalogue"
+    />
+
+    <!-- Delete Confirmation Modal -->
+    <DeleteConfirmationModal
+      :show="showDeleteModal"
+      :items="itemsToDelete"
+      @confirm="confirmDelete"
+      @cancel="showDeleteModal = false"
     />
   </div>
 </template>
@@ -237,6 +263,8 @@ import SupplierPricesPanel from './SupplierPricesPanel.vue';
 import TemplateEditor from './TemplateEditor.vue';
 import SpecificationEditor from './SpecificationEditor.vue';
 import ImageGalleryPanel from './ImageGalleryPanel.vue';
+import UsagePanel from './UsagePanel.vue';
+import DeleteConfirmationModal from '../common/DeleteConfirmationModal.vue';
 
 export default {
   name: 'CatalogueTab',
@@ -247,12 +275,14 @@ export default {
     CatalogueItemModal,
     CatalogueImportModal,
     RecipeManagementModal,
+    DeleteConfirmationModal,
     BulkPriceChangeModal,
     EstimatePricesPanel,
     SupplierPricesPanel,
     TemplateEditor,
     SpecificationEditor,
-    ImageGalleryPanel
+    ImageGalleryPanel,
+    UsagePanel
   },
   setup() {
     const api = useElectronAPI();
@@ -270,6 +300,8 @@ export default {
     const showImportModal = ref(false);
     const showRecipeModal = ref(false);
     const showBulkPriceModal = ref(false);
+    const showDeleteModal = ref(false);
+    const itemsToDelete = ref([]);
     const editingItem = ref(null);
     const editingRecipePriceCode = ref(null);
     const catalogueGridRef = ref(null);
@@ -357,25 +389,50 @@ export default {
     }
 
     async function onDeleteItems(items) {
-      if (!confirm(`Delete ${items.length} item(s)? This action cannot be undone.`)) {
-        return;
-      }
+      // Show the delete confirmation modal
+      itemsToDelete.value = items;
+      showDeleteModal.value = true;
+    }
 
+    async function confirmDelete() {
+      showDeleteModal.value = false;
       loading.value = true;
+
       try {
-        const priceCodes = items.map(item => item.PriceCode);
+        const priceCodes = itemsToDelete.value.map(item => item.PriceCode);
         const result = await api.catalogue.deleteItems(priceCodes);
 
-        if (!result.success) {
+        if (result.success) {
+          const successCount = result.results?.filter(r => r.success).length || 0;
+          const failCount = result.results?.filter(r => !r.success).length || 0;
+
+          if (failCount > 0) {
+            const failedItems = result.results.filter(r => !r.success);
+            alert(`Deleted ${successCount} items. ${failCount} items could not be deleted:\n\n${failedItems.map(f => `${f.priceCode}: ${f.message}`).join('\n')}`);
+          } else {
+            alert(`Successfully deleted ${successCount} item(s)`);
+          }
+        } else {
           alert('Error deleting items: ' + result.message);
         }
 
+        // Gracefully clear the UI
+        // 1. Clear the selected item (close details panel)
+        selectedItemCode.value = null;
+
+        // 2. Reload catalogue data
         await loadCatalogue();
+
+        // 3. Clear grid selection after reload
+        if (catalogueGridRef.value && catalogueGridRef.value.gridApi) {
+          catalogueGridRef.value.gridApi.deselectAll();
+        }
       } catch (error) {
         console.error('Error deleting items:', error);
         alert('Error deleting items: ' + error.message);
       } finally {
         loading.value = false;
+        itemsToDelete.value = [];
       }
     }
 
@@ -565,6 +622,8 @@ export default {
       showImportModal,
       showRecipeModal,
       showBulkPriceModal,
+      showDeleteModal,
+      itemsToDelete,
       editingItem,
       editingRecipePriceCode,
       catalogueGridRef,
@@ -574,6 +633,7 @@ export default {
       loadCatalogue,
       onCellValueChanged,
       onDeleteItems,
+      confirmDelete,
       onDuplicateItem,
       onSaveItem,
       onManageRecipe,
