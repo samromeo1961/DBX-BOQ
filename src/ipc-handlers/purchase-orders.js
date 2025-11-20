@@ -57,23 +57,22 @@ async function getJobs(event) {
 }
 
 /**
- * Ensure Status column exists in Orders table
+ * Check if Status column exists in Orders table
+ * Note: We don't try to add it if missing - Orders table is managed by Databuild
  */
 async function ensureStatusColumn() {
   try {
     const pool = getPool();
     if (!pool) {
-      console.log('ensureStatusColumn: No pool available');
       return false;
     }
 
     const jobDbName = getJobDatabaseName();
     if (!jobDbName) {
-      console.log('ensureStatusColumn: No job database configured');
       return false;
     }
 
-    // Check if Status column exists
+    // Check if custom Status column exists in Orders (optional)
     const checkColumn = await pool.request().query(`
       SELECT COLUMN_NAME
       FROM INFORMATION_SCHEMA.COLUMNS
@@ -83,39 +82,16 @@ async function ensureStatusColumn() {
         AND TABLE_CATALOG = '${jobDbName}'
     `);
 
-    if (checkColumn.recordset.length === 0) {
-      console.log('Status column does not exist, adding it now...');
-
-      // Add Status column with default 'Draft'
-      await pool.request().query(`
-        ALTER TABLE [${jobDbName}].[dbo].[Orders]
-        ADD Status VARCHAR(20) NULL
-      `);
-
-      // Set default value for new rows
-      await pool.request().query(`
-        ALTER TABLE [${jobDbName}].[dbo].[Orders]
-        ADD CONSTRAINT DF_Orders_Status DEFAULT 'Draft' FOR Status
-      `);
-
-      // Update existing records based on OrderDate
-      await pool.request().query(`
-        UPDATE [${jobDbName}].[dbo].[Orders]
-        SET Status = CASE
-          WHEN OrderDate IS NOT NULL THEN 'Ordered'
-          ELSE 'Draft'
-        END
-        WHERE Status IS NULL
-      `);
-
-      console.log('✓ Status column added to Orders table successfully');
-      return true;
+    const hasStatus = checkColumn.recordset.length > 0;
+    if (hasStatus) {
+      console.log('✓ Custom Status column exists in Orders');
     } else {
-      console.log('Status column already exists');
-      return true;
+      console.log('ℹ Using Databuild standard status fields (Ordered, Authorised, etc.)');
     }
+
+    return hasStatus;
   } catch (error) {
-    console.error('Error ensuring Status column:', error.message);
+    console.error('Error checking Status column:', error.message);
     return false;
   }
 }
@@ -231,9 +207,18 @@ async function getOrdersForJob(event, jobNo) {
       console.log('CCSuppliers table check failed, assuming it does not exist');
     }
 
-    // Build Status field selection based on whether column exists
-    const statusField = hasStatusColumn ? "ISNULL(o.Status, 'Draft') AS Status" : "'Draft' AS Status";
-    const statusGroupBy = hasStatusColumn ? "o.Status," : "";
+    // Build Status field selection based on whether custom Status column exists
+    // If not, derive from Databuild standard fields (Ordered, Authorised, Rejected)
+    const statusField = hasStatusColumn
+      ? "ISNULL(o.Status, 'Draft') AS Status"
+      : `CASE
+          WHEN ISNULL(o.Rejected, 0) = 1 THEN 'Cancelled'
+          WHEN ISNULL(o.Ordered, 0) = 1 THEN 'Ordered'
+          WHEN ISNULL(o.Authorised, 0) = 1 THEN 'Approved'
+          WHEN o.Supplier IS NOT NULL THEN 'Draft'
+          ELSE 'Draft'
+        END AS Status`;
+    const statusGroupBy = hasStatusColumn ? "o.Status," : "o.Ordered, o.Authorised, o.Rejected,";
 
     // Build query with or without CCSuppliers join
     const query = hasCCSuppliers ? `
@@ -249,14 +234,18 @@ async function getOrdersForJob(event, jobNo) {
         s.AccountEmail AS SupplierEmail,
         o.OrderDate,
         ${statusField},
-        CASE WHEN o.OrderNumber IS NOT NULL THEN 1 ELSE 0 END AS IsLogged,
+        CASE WHEN o.Supplier IS NOT NULL THEN 1 ELSE 0 END AS IsLogged,
         ISNULL(ccs.Preferred, 0) AS IsPreferredSupplier,
         ccs.SortOrder AS SupplierSortOrder,
         SUM(b.Quantity * b.UnitPrice) AS OrderTotal,
         COUNT(*) AS ItemCount
       FROM [${jobDbName}].[dbo].[Bill] b
       LEFT JOIN [${sysDbName}].[dbo].[CostCentres] cc ON b.CostCentre = cc.Code AND cc.Tier = 1
-      LEFT JOIN [${jobDbName}].[dbo].[Orders] o ON CONCAT(b.JobNo, '/', b.CostCentre, '.', b.BLoad) = o.OrderNumber
+      LEFT JOIN [${jobDbName}].[dbo].[Orders] o
+        ON b.JobNo = o.Job
+        AND b.CostCentre = o.CostCentre
+        AND b.BLoad = o.BLoad
+        AND ISNULL(o.VO, 0) = 0
       LEFT JOIN [${sysDbName}].[dbo].[Supplier] s ON o.Supplier = s.Supplier_Code
       LEFT JOIN [${sysDbName}].[dbo].[CCSuppliers] ccs ON b.CostCentre = ccs.CostCentre AND o.Supplier = ccs.SupplierCode
       WHERE b.JobNo = @JobNo
@@ -271,7 +260,6 @@ async function getOrdersForJob(event, jobNo) {
         s.SupplierName,
         s.AccountEmail,
         o.OrderDate,
-        o.OrderNumber,
         ${statusGroupBy}
         ccs.Preferred,
         ccs.SortOrder
@@ -289,14 +277,18 @@ async function getOrdersForJob(event, jobNo) {
         s.AccountEmail AS SupplierEmail,
         o.OrderDate,
         ${statusField},
-        CASE WHEN o.OrderNumber IS NOT NULL THEN 1 ELSE 0 END AS IsLogged,
+        CASE WHEN o.Supplier IS NOT NULL THEN 1 ELSE 0 END AS IsLogged,
         0 AS IsPreferredSupplier,
         NULL AS SupplierSortOrder,
         SUM(b.Quantity * b.UnitPrice) AS OrderTotal,
         COUNT(*) AS ItemCount
       FROM [${jobDbName}].[dbo].[Bill] b
       LEFT JOIN [${sysDbName}].[dbo].[CostCentres] cc ON b.CostCentre = cc.Code AND cc.Tier = 1
-      LEFT JOIN [${jobDbName}].[dbo].[Orders] o ON CONCAT(b.JobNo, '/', b.CostCentre, '.', b.BLoad) = o.OrderNumber
+      LEFT JOIN [${jobDbName}].[dbo].[Orders] o
+        ON b.JobNo = o.Job
+        AND b.CostCentre = o.CostCentre
+        AND b.BLoad = o.BLoad
+        AND ISNULL(o.VO, 0) = 0
       LEFT JOIN [${sysDbName}].[dbo].[Supplier] s ON o.Supplier = s.Supplier_Code
       WHERE b.JobNo = @JobNo
         AND b.Quantity > 0
@@ -310,7 +302,7 @@ async function getOrdersForJob(event, jobNo) {
         s.SupplierName,
         s.AccountEmail,
         o.OrderDate,
-        o.OrderNumber${hasStatusColumn ? ',\n        o.Status' : ''}
+        ${statusGroupBy.slice(0, -1)}
       ORDER BY ISNULL(cc.SortOrder, 999999), b.CostCentre, b.BLoad
     `;
 
@@ -363,7 +355,11 @@ async function getOrderLineItems(event, orderNumber) {
       FROM [${jobDbName}].[dbo].[Bill] b
       LEFT JOIN [${sysDbName}].[dbo].[PriceList] pl ON b.ItemCode = pl.PriceCode
       LEFT JOIN [${sysDbName}].[dbo].[PerCodes] pc ON pl.PerCode = pc.Code
-      LEFT JOIN [${jobDbName}].[dbo].[Orders] o ON CONCAT(b.JobNo, '/', b.CostCentre, '.', b.BLoad) = o.OrderNumber
+      LEFT JOIN [${jobDbName}].[dbo].[Orders] o
+        ON b.JobNo = o.Job
+        AND b.CostCentre = o.CostCentre
+        AND b.BLoad = o.BLoad
+        AND ISNULL(o.VO, 0) = 0
       LEFT JOIN [${sysDbName}].[dbo].[SuppliersPrices] sp
         ON sp.ItemCode = b.ItemCode
         AND sp.Supplier = o.Supplier
@@ -595,7 +591,7 @@ async function getOrderSummary(event, orderNumber) {
         s.SupplierName,
         s.AccountEmail AS SupplierEmail,
         o.OrderDate,
-        CASE WHEN o.OrderNumber IS NOT NULL THEN 1 ELSE 0 END AS IsLogged,
+        CASE WHEN o.Supplier IS NOT NULL THEN 1 ELSE 0 END AS IsLogged,
         COUNT(b.ItemCode) AS ItemCount,
         SUM(b.Quantity * b.UnitPrice) AS SubTotal,
         SUM(b.Quantity * b.UnitPrice) * 0.10 AS GSTAmount,
@@ -604,7 +600,11 @@ async function getOrderSummary(event, orderNumber) {
       LEFT JOIN [${jobDbName}].[dbo].[Jobs] j ON b.JobNo = j.Job_No
       LEFT JOIN [${sysDbName}].[dbo].[Contacts] c ON j.Job_No = c.Code
       LEFT JOIN [${sysDbName}].[dbo].[CostCentres] cc ON b.CostCentre = cc.Code AND cc.Tier = 1
-      LEFT JOIN [${jobDbName}].[dbo].[Orders] o ON CONCAT(b.JobNo, '/', b.CostCentre, '.', b.BLoad) = o.OrderNumber
+      LEFT JOIN [${jobDbName}].[dbo].[Orders] o
+        ON b.JobNo = o.Job
+        AND b.CostCentre = o.CostCentre
+        AND b.BLoad = o.BLoad
+        AND ISNULL(o.VO, 0) = 0
       LEFT JOIN [${sysDbName}].[dbo].[Supplier] s ON o.Supplier = s.Supplier_Code
       WHERE b.JobNo = @JobNo
         AND b.CostCentre = @CostCentre
@@ -619,8 +619,7 @@ async function getOrderSummary(event, orderNumber) {
         o.Supplier,
         s.SupplierName,
         s.AccountEmail,
-        o.OrderDate,
-        o.OrderNumber
+        o.OrderDate
     `;
 
     const result = await pool.request()
@@ -711,7 +710,7 @@ async function getJobsWithOrderCounts(event) {
       LEFT JOIN [${sysDbName}].[dbo].[Contacts] c ON j.Job_No = c.Code
       LEFT JOIN [${jobDbName}].[dbo].[Bill] b ON j.Job_No = b.JobNo AND b.Quantity > 0
       LEFT JOIN [${jobDbName}].[dbo].[Orders] o ON CONCAT(b.JobNo, '/', b.CostCentre, '.', b.BLoad) = o.OrderNumber
-      WHERE j.Status != 'Archived'
+      WHERE j.Archived = 0 AND j.CCBank = 1
       GROUP BY j.Job_No, c.Address, c.Name, c.City, c.State, j.Status
       HAVING COUNT(DISTINCT CONCAT(b.CostCentre, '.', b.BLoad)) > 0
       ORDER BY j.Job_No DESC
@@ -1113,22 +1112,37 @@ async function logOrder(event, orderNumber, supplier, delDate, note) {
       return { success: false, message: 'Order is already logged' };
     }
 
-    // Insert new order
-    const insertQuery = `
-      INSERT INTO [${jobDbName}].[dbo].[Orders]
-      (OrderNumber, Job, CostCentre, BLoad, Supplier, DelDate, Note, OrderDate)
-      VALUES (@OrderNumber, @JobNo, @CostCentre, @BLoad, @Supplier, @DelDate, @Note, GETDATE())
-    `;
+    // Ensure Status column exists
+    const hasStatusColumn = await ensureStatusColumn();
 
-    await pool.request()
+    // Build INSERT query conditionally based on Status column availability
+    let insertColumns = 'OrderNumber, Job, CostCentre, BLoad, Supplier, DelDate, Note, OrderDate';
+    let insertValues = '@OrderNumber, @JobNo, @CostCentre, @BLoad, @Supplier, @DelDate, @Note, GETDATE()';
+
+    const request = pool.request()
       .input('OrderNumber', orderNumber)
       .input('JobNo', jobNo)
       .input('CostCentre', costCentre)
       .input('BLoad', parseInt(bLoad))
       .input('Supplier', supplier || null)
       .input('DelDate', delDate || null)
-      .input('Note', note || null)
-      .query(insertQuery);
+      .input('Note', note || null);
+
+    // Include Status if column exists
+    if (hasStatusColumn) {
+      insertColumns += ', Status';
+      insertValues += ', @Status';
+      // Set status based on whether supplier is provided
+      request.input('Status', supplier ? 'Ordered' : 'Draft');
+    }
+
+    const insertQuery = `
+      INSERT INTO [${jobDbName}].[dbo].[Orders]
+      (${insertColumns})
+      VALUES (${insertValues})
+    `;
+
+    await request.query(insertQuery);
 
     return {
       success: true,
@@ -1163,7 +1177,6 @@ async function getOrderDetails(event, orderNumber) {
 
     const query = `
       SELECT
-        o.OrderNumber,
         o.Job AS JobNo,
         o.CostCentre,
         o.BLoad,
@@ -1172,16 +1185,22 @@ async function getOrderDetails(event, orderNumber) {
         o.Note,
         o.OrderDate,
         s.SupplierName,
+        s.AccountEmail AS SupplierEmail,
         cc.Name AS CostCentreName,
-        CASE WHEN o.OrderNumber IS NOT NULL THEN 1 ELSE 0 END AS IsLogged
+        CASE WHEN o.Supplier IS NOT NULL THEN 1 ELSE 0 END AS IsLogged
       FROM [${jobDbName}].[dbo].[Orders] o
       LEFT JOIN [${sysDbName}].[dbo].[Supplier] s ON o.Supplier = s.Supplier_Code
       LEFT JOIN [${sysDbName}].[dbo].[CostCentres] cc ON o.CostCentre = cc.Code AND cc.Tier = 1
-      WHERE o.OrderNumber = @OrderNumber
+      WHERE o.Job = @JobNo
+        AND o.CostCentre = @CostCentre
+        AND o.BLoad = @BLoad
+        AND ISNULL(o.VO, 0) = 0
     `;
 
     const result = await pool.request()
-      .input('OrderNumber', orderNumber)
+      .input('JobNo', jobNo)
+      .input('CostCentre', costCentre)
+      .input('BLoad', parseInt(bLoad))
       .query(query);
 
     if (result.recordset.length === 0) {
@@ -1337,16 +1356,28 @@ async function batchPrint(event, orderNumbers, settings) {
 async function batchEmail(event, orderNumbers, settings) {
   try {
     const nodemailer = require('nodemailer');
+    const emailSettingsStore = require('../database/email-settings-store');
     const results = [];
 
-    // Get email configuration from settings or use defaults
-    const emailConfig = settings.emailConfig || {
-      host: 'smtp.gmail.com',
-      port: 587,
-      secure: false,
+    // Get email settings from store or from passed settings
+    const emailSettings = settings?.emailSettings || emailSettingsStore.getEmailSettings();
+
+    // Validate email configuration
+    if (!emailSettings.smtpHost || !emailSettings.smtpUser || !emailSettings.smtpPassword) {
+      return {
+        success: false,
+        message: 'Email not configured. Please configure SMTP settings in Settings > Email / SMTP.'
+      };
+    }
+
+    // Create email configuration
+    const emailConfig = {
+      host: emailSettings.smtpHost,
+      port: emailSettings.smtpPort,
+      secure: emailSettings.smtpSecure,
       auth: {
-        user: settings.emailUser,
-        pass: settings.emailPassword
+        user: emailSettings.smtpUser,
+        pass: emailSettings.smtpPassword
       }
     };
 
@@ -1368,13 +1399,20 @@ async function batchEmail(event, orderNumbers, settings) {
 
         const summary = summaryResult.summary;
 
-        if (!summary.SupplierEmail) {
-          results.push({
-            orderNumber,
-            success: false,
-            error: 'Supplier has no email address'
-          });
-          continue;
+        // Determine recipient email
+        let recipientEmail;
+        if (emailSettings.testMode) {
+          recipientEmail = emailSettings.testEmail;
+        } else {
+          if (!summary.SupplierEmail) {
+            results.push({
+              orderNumber,
+              success: false,
+              error: 'Supplier has no email address'
+            });
+            continue;
+          }
+          recipientEmail = summary.SupplierEmail;
         }
 
         // Render to PDF
@@ -1389,21 +1427,37 @@ async function batchEmail(event, orderNumbers, settings) {
           continue;
         }
 
-        // Prepare email
-        const emailSubject = settings.emailSubject ||
-          `Purchase Order ${orderNumber} - ${summary.JobName || ''}`;
+        // Prepare email subject with template variables
+        let emailSubject = emailSettings.emailSubject || 'Purchase Order {{OrderNumber}}';
+        emailSubject = emailSubject
+          .replace(/{{OrderNumber}}/g, orderNumber)
+          .replace(/{{JobName}}/g, summary.JobName || '')
+          .replace(/{{JobNo}}/g, summary.JobNo || '');
 
-        const emailBody = settings.emailBody ||
-          `Dear ${summary.SupplierName},\n\nPlease find attached Purchase Order ${orderNumber}.\n\n` +
-          `Job: ${summary.JobName || summary.JobNo}\n` +
-          `Cost Centre: ${summary.CostCentreName}\n\n` +
+        // Prepare email body with template variables
+        let emailBody = emailSettings.emailBody ||
+          `Dear {{SupplierName}},\n\nPlease find attached Purchase Order {{OrderNumber}}.\n\n` +
+          `Job: {{JobName}} ({{JobNo}})\n` +
+          `Cost Centre: {{CostCentreName}}\n\n` +
           `Please confirm receipt and provide delivery timeframe.\n\n` +
           `Regards`;
 
+        emailBody = emailBody
+          .replace(/{{SupplierName}}/g, summary.SupplierName || '')
+          .replace(/{{OrderNumber}}/g, orderNumber)
+          .replace(/{{JobName}}/g, summary.JobName || '')
+          .replace(/{{JobNo}}/g, summary.JobNo || '')
+          .replace(/{{CostCentreName}}/g, summary.CostCentreName || '');
+
+        // Add test mode prefix to subject if in test mode
+        if (emailSettings.testMode) {
+          emailSubject = `[TEST] ${emailSubject}`;
+        }
+
         const mailOptions = {
-          from: settings.emailFrom || emailConfig.auth.user,
-          to: summary.SupplierEmail,
-          cc: settings.emailCC,
+          from: emailSettings.emailFrom || emailSettings.smtpUser,
+          to: recipientEmail,
+          cc: emailSettings.emailCC || undefined,
           subject: emailSubject,
           text: emailBody,
           html: emailBody.replace(/\n/g, '<br>'),
@@ -1417,10 +1471,39 @@ async function batchEmail(event, orderNumbers, settings) {
         // Send email
         await transporter.sendMail(mailOptions);
 
+        // Mark order as sent (set Ordered flag)
+        // Parse order number to get composite key
+        const [jobPart, bLoad] = orderNumber.split('.');
+        const [jobNo, costCentre] = jobPart.split('/');
+
+        const pool = getPool();
+        const jobDbName = getJobDatabaseName();
+
+        if (pool && jobDbName) {
+          try {
+            await pool.request()
+              .input('JobNo', jobNo)
+              .input('CostCentre', costCentre)
+              .input('BLoad', parseInt(bLoad))
+              .query(`
+                UPDATE [${jobDbName}].[dbo].[Orders]
+                SET Ordered = 1, OrderDate = GETDATE()
+                WHERE Job = @JobNo
+                  AND CostCentre = @CostCentre
+                  AND BLoad = @BLoad
+                  AND ISNULL(VO, 0) = 0
+              `);
+          } catch (updateError) {
+            console.error('Failed to update Ordered flag:', updateError);
+            // Don't fail the email if status update fails
+          }
+        }
+
         results.push({
           orderNumber,
           success: true,
-          recipient: summary.SupplierEmail
+          recipient: recipientEmail,
+          testMode: emailSettings.testMode
         });
       } catch (error) {
         results.push({
@@ -1450,15 +1533,37 @@ async function batchEmail(event, orderNumbers, settings) {
  */
 async function batchSavePDF(event, orderNumbers, settings) {
   try {
-    const { dialog } = require('electron');
+    const { dialog, shell } = require('electron');
     const fs = require('fs');
     const path = require('path');
+    const globalSettings = require('./global-settings');
 
-    // Show folder picker
-    const result = await dialog.showOpenDialog({
+    // Get default folder from application settings
+    const appDefaults = await globalSettings.getApplicationDefaults();
+    const defaultPath = appDefaults.poFolder || '';
+
+    // Ensure the default folder exists
+    if (defaultPath) {
+      try {
+        if (!fs.existsSync(defaultPath)) {
+          fs.mkdirSync(defaultPath, { recursive: true });
+        }
+      } catch (err) {
+        console.warn('Could not create default PO folder:', err);
+      }
+    }
+
+    // Show folder picker with default path
+    const dialogOptions = {
       title: 'Select folder to save PDFs',
       properties: ['openDirectory', 'createDirectory']
-    });
+    };
+
+    if (defaultPath) {
+      dialogOptions.defaultPath = defaultPath;
+    }
+
+    const result = await dialog.showOpenDialog(dialogOptions);
 
     if (result.canceled || !result.filePaths.length) {
       return {
@@ -1496,6 +1601,15 @@ async function batchSavePDF(event, orderNumbers, settings) {
       } else {
         failedCount++;
         errors.push(`${pdfResult.orderNumber}: ${pdfResult.error}`);
+      }
+    }
+
+    // Open the folder in file explorer after successful save
+    if (savedCount > 0) {
+      try {
+        await shell.openPath(saveDir);
+      } catch (err) {
+        console.warn('Could not open save folder:', err);
       }
     }
 
@@ -1638,6 +1752,194 @@ async function removeNominatedSupplier(event, costCentre, supplierCode) {
   }
 }
 
+/**
+ * Cancel an order by setting the Rejected flag
+ * This marks the order as cancelled while keeping it in the grid
+ */
+async function cancelOrder(event, orderNumber, reason) {
+  try {
+    const pool = getPool();
+    if (!pool) {
+      return { success: false, message: 'Database connection not available' };
+    }
+
+    const jobDbName = getJobDatabaseName();
+    if (!jobDbName) {
+      return { success: false, message: 'Job Database not configured' };
+    }
+
+    // Parse order number to get composite key
+    const [jobPart, bLoad] = orderNumber.split('.');
+    const [jobNo, costCentre] = jobPart.split('/');
+
+    // Mark the order as rejected (cancelled)
+    await pool.request()
+      .input('JobNo', jobNo)
+      .input('CostCentre', costCentre)
+      .input('BLoad', parseInt(bLoad))
+      .input('Reason', reason || 'Order cancelled')
+      .query(`
+        UPDATE [${jobDbName}].[dbo].[Orders]
+        SET Rejected = 1,
+            Note = CASE
+              WHEN Note IS NULL OR LEN(CAST(Note AS NVARCHAR(MAX))) = 0 THEN @Reason
+              ELSE CAST(Note AS NVARCHAR(MAX)) + CHAR(13) + CHAR(10) + 'CANCELLED: ' + @Reason
+            END
+        WHERE Job = @JobNo
+          AND CostCentre = @CostCentre
+          AND BLoad = @BLoad
+          AND ISNULL(VO, 0) = 0
+      `);
+
+    // Find the maximum BLoad for this job/costCentre to create a new draft order
+    const maxBLoadResult = await pool.request()
+      .input('JobNo', jobNo)
+      .input('CostCentre', costCentre)
+      .query(`
+        SELECT ISNULL(MAX(b.BLoad), 0) AS MaxBLoad
+        FROM [${jobDbName}].[dbo].[Bill] b
+        WHERE b.JobNo = @JobNo
+          AND b.CostCentre = @CostCentre
+      `);
+
+    const newBLoad = maxBLoadResult.recordset[0].MaxBLoad + 1;
+
+    // Copy bill items to new BLoad with status Draft (no supplier assigned)
+    await pool.request()
+      .input('JobNo', jobNo)
+      .input('CostCentre', costCentre)
+      .input('OldBLoad', parseInt(bLoad))
+      .input('NewBLoad', newBLoad)
+      .query(`
+        INSERT INTO [${jobDbName}].[dbo].[Bill]
+          (JobNo, CostCentre, BLoad, LineNumber, ItemCode, Quantity, UnitPrice, XDescription)
+        SELECT
+          JobNo,
+          CostCentre,
+          @NewBLoad,
+          LineNumber,
+          ItemCode,
+          Quantity,
+          UnitPrice,
+          XDescription
+        FROM [${jobDbName}].[dbo].[Bill]
+        WHERE JobNo = @JobNo
+          AND CostCentre = @CostCentre
+          AND BLoad = @OldBLoad
+      `);
+
+    const newOrderNumber = `${jobNo}/${costCentre}.${newBLoad}`;
+
+    console.log(`✓ Order ${orderNumber} cancelled. Reason: ${reason || 'Not specified'}`);
+    console.log(`✓ New draft order created: ${newOrderNumber}`);
+
+    return {
+      success: true,
+      message: 'Order cancelled successfully. New draft order created.',
+      cancelledOrder: orderNumber,
+      newOrder: newOrderNumber
+    };
+  } catch (error) {
+    console.error('Error cancelling order:', error);
+    return { success: false, message: error.message };
+  }
+}
+
+/**
+ * Send cancellation email for a cancelled order
+ */
+async function sendCancellationEmail(event, orderNumber, settings) {
+  try {
+    const nodemailer = require('nodemailer');
+    const emailSettingsStore = require('../database/email-settings-store');
+
+    // Get email settings
+    const emailSettings = settings?.emailSettings || emailSettingsStore.getEmailSettings();
+
+    // Validate email configuration
+    if (!emailSettings.smtpHost || !emailSettings.smtpUser || !emailSettings.smtpPassword) {
+      return {
+        success: false,
+        message: 'Email not configured. Please configure SMTP settings in Settings > Email / SMTP.'
+      };
+    }
+
+    // Get order summary for supplier email
+    const summaryResult = await getOrderSummary(event, orderNumber);
+    if (!summaryResult.success) {
+      return {
+        success: false,
+        message: 'Failed to get order summary'
+      };
+    }
+
+    const summary = summaryResult.summary;
+
+    // Determine recipient email
+    let recipientEmail;
+    if (emailSettings.testMode) {
+      recipientEmail = emailSettings.testEmail;
+    } else {
+      if (!summary.SupplierEmail) {
+        return {
+          success: false,
+          message: 'Supplier has no email address'
+        };
+      }
+      recipientEmail = summary.SupplierEmail;
+    }
+
+    // Create email configuration
+    const emailConfig = {
+      host: emailSettings.smtpHost,
+      port: emailSettings.smtpPort,
+      secure: emailSettings.smtpSecure,
+      auth: {
+        user: emailSettings.smtpUser,
+        pass: emailSettings.smtpPassword
+      }
+    };
+
+    const transporter = nodemailer.createTransport(emailConfig);
+
+    // Prepare cancellation email
+    let emailSubject = `CANCELLATION - Purchase Order ${orderNumber}`;
+    if (emailSettings.testMode) {
+      emailSubject = `[TEST] ${emailSubject}`;
+    }
+
+    let emailBody = `Dear ${summary.SupplierName || 'Supplier'},\n\n` +
+      `This is to notify you that Purchase Order ${orderNumber} has been CANCELLED.\n\n` +
+      `Job: ${summary.JobName || ''} (${summary.JobNo || ''})\n` +
+      `Cost Centre: ${summary.CostCentreName || ''}\n\n` +
+      `Please disregard the previous purchase order.\n\n` +
+      `If you have any questions, please contact us.\n\n` +
+      `Regards`;
+
+    const mailOptions = {
+      from: emailSettings.emailFrom || emailSettings.smtpUser,
+      to: recipientEmail,
+      cc: emailSettings.emailCC || undefined,
+      subject: emailSubject,
+      text: emailBody,
+      html: emailBody.replace(/\n/g, '<br>')
+    };
+
+    // Send email
+    await transporter.sendMail(mailOptions);
+
+    return {
+      success: true,
+      message: 'Cancellation email sent successfully',
+      recipient: recipientEmail,
+      testMode: emailSettings.testMode
+    };
+  } catch (error) {
+    console.error('Error sending cancellation email:', error);
+    return { success: false, message: error.message };
+  }
+}
+
 module.exports = {
   getJobs,
   getOrdersForJob,
@@ -1659,5 +1961,7 @@ module.exports = {
   getAllSuppliers,
   addNominatedSupplier,
   removeNominatedSupplier,
-  ensureStatusColumn
+  ensureStatusColumn,
+  cancelOrder,
+  sendCancellationEmail
 };

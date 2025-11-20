@@ -93,7 +93,10 @@ export function useElectronAPI() {
       getUiPreferences: () => window.electronAPI?.settings.getUiPreferences(),
       updateUiPreferences: (preferences) => window.electronAPI?.settings.updateUiPreferences(preferences),
       getAll: () => window.electronAPI?.settings.getAll(),
-      resetAll: () => window.electronAPI?.settings.resetAll()
+      resetAll: () => window.electronAPI?.settings.resetAll(),
+      // API Keys
+      getApiKeys: () => window.electronAPI?.settings.getApiKeys(),
+      updateApiKeys: (keys) => window.electronAPI?.settings.updateApiKeys(keys)
     },
 
     // Jobs
@@ -122,6 +125,44 @@ export function useElectronAPI() {
       createContact: (contactData) => window.electronAPI?.contacts.createContact(contactData),
       updateContact: (contactData) => window.electronAPI?.contacts.updateContact(contactData),
       getGroups: () => window.electronAPI?.contacts.getGroups()
+    },
+
+    // Suppliers
+    suppliers: {
+      getList: (showArchived) => window.electronAPI?.suppliers.getList(showArchived),
+      getSupplier: (code) => window.electronAPI?.suppliers.getSupplier(code),
+      createSupplier: (supplierData) => window.electronAPI?.suppliers.createSupplier(supplierData),
+      updateSupplier: (supplierData) => window.electronAPI?.suppliers.updateSupplier(supplierData),
+      deleteSupplier: (code) => window.electronAPI?.suppliers.deleteSupplier(code),
+      getOrderHistory: (code) => window.electronAPI?.suppliers.getOrderHistory(code),
+      getPaymentStrategies: () => window.electronAPI?.suppliers.getPaymentStrategies()
+    },
+
+    // Contact Groups
+    contactGroups: {
+      getList: () => window.electronAPI?.contactGroups.getList(),
+      getGroup: (code) => window.electronAPI?.contactGroups.getGroup(code),
+      createGroup: (groupData) => window.electronAPI?.contactGroups.createGroup(groupData)
+    },
+
+    // Supplier Groups
+    supplierGroups: {
+      getList: () => window.electronAPI?.supplierGroups.getList(),
+      getGroup: (code) => window.electronAPI?.supplierGroups.getGroup(code),
+      createGroup: (groupData) => window.electronAPI?.supplierGroups.createGroup(groupData)
+    },
+
+    // ABN Lookup
+    abnLookup: {
+      lookup: (abn, guid) => window.electronAPI?.abnLookup.lookup(abn, guid),
+      searchByName: (businessName, guid, options) => window.electronAPI?.abnLookup.searchByName(businessName, guid, options),
+      verify: (abn, expectedData, guid) => window.electronAPI?.abnLookup.verify(abn, expectedData, guid)
+    },
+
+    // Australia Post Address
+    ausPost: {
+      searchAddresses: (query) => window.electronAPI?.ausPost.searchAddresses(query),
+      validateAddress: (addressData) => window.electronAPI?.ausPost.validateAddress(addressData)
     },
 
     // Catalogue
@@ -204,6 +245,7 @@ export function useElectronAPI() {
       getOrderSummary: (orderNumber) => window.electronAPI?.purchaseOrders.getOrderSummary(orderNumber),
       getCostCentres: () => window.electronAPI?.purchaseOrders.getCostCentres(),
       getJobsWithCounts: () => window.electronAPI?.purchaseOrders.getJobsWithCounts(),
+      getJobsWithOrderCounts: () => window.electronAPI?.purchaseOrders.getJobsWithCounts(), // Alias for getJobsWithCounts
       getPreferredSuppliers: (costCentre) => window.electronAPI?.purchaseOrders.getPreferredSuppliers(costCentre),
       getSuppliersForCostCentre: (costCentre) => window.electronAPI?.purchaseOrders.getSuppliersForCostCentre(costCentre),
       updateOrder: (orderNumber, updates) => window.electronAPI?.purchaseOrders.updateOrder(orderNumber, updates),
@@ -216,7 +258,26 @@ export function useElectronAPI() {
       getAllSuppliers: () => window.electronAPI?.purchaseOrders.getAllSuppliers(),
       addNominatedSupplier: (costCentre, supplierCode) => window.electronAPI?.purchaseOrders.addNominatedSupplier(costCentre, supplierCode),
       removeNominatedSupplier: (costCentre, supplierCode) => window.electronAPI?.purchaseOrders.removeNominatedSupplier(costCentre, supplierCode),
-      ensureStatusColumn: () => window.electronAPI?.purchaseOrders.ensureStatusColumn()
+      ensureStatusColumn: () => window.electronAPI?.purchaseOrders.ensureStatusColumn(),
+      cancelOrder: (orderNumber, reason) => window.electronAPI?.purchaseOrders.cancelOrder(orderNumber, reason),
+      sendCancellationEmail: (orderNumber, settings) => window.electronAPI?.purchaseOrders.sendCancellationEmail(orderNumber, settings)
+    },
+
+    // Email Settings
+    emailSettings: {
+      get: () => window.electronAPI?.emailSettings.get(),
+      save: (settings) => window.electronAPI?.emailSettings.save(settings),
+      update: (key, value) => window.electronAPI?.emailSettings.update(key, value),
+      reset: () => window.electronAPI?.emailSettings.reset(),
+      getSMTPConfig: () => window.electronAPI?.emailSettings.getSMTPConfig(),
+      isConfigured: () => window.electronAPI?.emailSettings.isConfigured()
+    },
+
+    // Email
+    email: {
+      sendTest: (to, settings) => window.electronAPI?.email.sendTest(to, settings),
+      sendPurchaseOrder: (orderNumber, to, subject, body, attachments) =>
+        window.electronAPI?.email.sendPurchaseOrder(orderNumber, to, subject, body, attachments)
     },
 
     // Utility
