@@ -81,7 +81,7 @@
           >
             <option :value="null">No Supplier</option>
             <option
-              v-for="supplier in suppliers"
+              v-for="supplier in filteredSuppliers"
               :key="supplier.Code"
               :value="supplier.Code"
             >
@@ -172,8 +172,19 @@ export default {
     const catalogueItems = ref([]);
     const selectedItems = ref([]);
     const costCentres = ref([]);
+    const nominatedSuppliers = ref([]);
     const gridApi = ref(null);
     let searchTimeout = null;
+
+    // Computed: show nominated suppliers for specific CC, all suppliers for "All Cost Centres"
+    const filteredSuppliers = computed(() => {
+      if (!filterCostCentre.value) {
+        // All Cost Centres - show full supplier list from props
+        return props.suppliers;
+      }
+      // Specific cost centre - show nominated suppliers
+      return nominatedSuppliers.value;
+    });
 
     const columnDefs = ref([
       {
@@ -292,6 +303,25 @@ export default {
       }
     }
 
+    async function loadNominatedSuppliers(costCentre) {
+      if (!costCentre) {
+        nominatedSuppliers.value = [];
+        return;
+      }
+      try {
+        const result = await api.boq.getNominatedSuppliers(costCentre);
+        if (result.success) {
+          nominatedSuppliers.value = result.data || [];
+          console.log(`✅ Loaded ${nominatedSuppliers.value.length} nominated suppliers for CC ${costCentre}`);
+        } else {
+          nominatedSuppliers.value = [];
+        }
+      } catch (error) {
+        console.error('Error loading nominated suppliers:', error);
+        nominatedSuppliers.value = [];
+      }
+    }
+
     function onGridReady(params) {
       gridApi.value = params.api;
     }
@@ -321,6 +351,14 @@ export default {
     watch(() => props.costCentre, (newCostCentre) => {
       filterCostCentre.value = newCostCentre;
       searchCatalogue();
+      loadNominatedSuppliers(newCostCentre);
+    });
+
+    // Watch for filter cost centre changes (user dropdown)
+    watch(filterCostCentre, (newCostCentre) => {
+      loadNominatedSuppliers(newCostCentre);
+      // Clear selected supplier when cost centre changes if current supplier not in new list
+      emit('update:selectedSupplier', null);
     });
 
     // Watch for price level changes from parent
@@ -340,6 +378,7 @@ export default {
       catalogueItems,
       selectedItems,
       costCentres,
+      filteredSuppliers,
       gridApi,
       columnDefs,
       defaultColDef,
