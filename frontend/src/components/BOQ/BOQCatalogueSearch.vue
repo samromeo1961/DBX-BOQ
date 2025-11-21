@@ -79,7 +79,7 @@
             class="form-select form-select-sm"
             title="Supplier to assign when adding items"
           >
-            <option :value="null">No Supplier</option>
+            <option :value="null">{{ filterCostCentre ? 'Select Nominated Supplier...' : 'Select Supplier...' }}</option>
             <option
               v-for="supplier in filteredSuppliers"
               :key="supplier.Code"
