@@ -359,15 +359,24 @@ export default {
     }
 
     async function onCellValueChanged(event) {
-      const { data } = event;
+      const { data, colDef } = event;
 
       loading.value = true;
       try {
+        // If Unit column was edited, convert Printout back to PerCode
+        let perCodeValue = data.PerCode;
+        if (colDef.field === 'Unit' && data.Unit) {
+          const matchingPerCode = perCodes.value.find(pc => pc.Printout === data.Unit);
+          if (matchingPerCode) {
+            perCodeValue = matchingPerCode.Code;
+          }
+        }
+
         const result = await api.catalogue.updateItem({
           PriceCode: data.PriceCode,
           Description: data.Description,
           CostCentre: data.CostCentre,
-          PerCode: data.PerCode,
+          PerCode: perCodeValue,
           Price1: data.Price1,
           Price2: data.Price2,
           Price3: data.Price3,
