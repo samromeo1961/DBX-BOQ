@@ -409,6 +409,17 @@ export default {
       try {
         const item = selectedWorkupItem.value;
 
+        console.log('📝 Saving workup for item:', item);
+        console.log('   LineNumber:', item.LineNumber);
+        console.log('   ItemCode:', item.ItemCode);
+
+        if (!item.LineNumber) {
+          console.error('❌ No LineNumber - cannot update workup!');
+          alert('Error: Item has no LineNumber. Cannot save workup.');
+          loading.value = false;
+          return;
+        }
+
         // Update workup in database
         const updateData = {
           JobNo: item.JobNo,
@@ -419,6 +430,8 @@ export default {
           UnitPrice: item.UnitPrice,
           XDescription: workup
         };
+
+        console.log('📤 Sending update:', updateData);
 
         const result = await api.boq.updateItem(updateData);
 

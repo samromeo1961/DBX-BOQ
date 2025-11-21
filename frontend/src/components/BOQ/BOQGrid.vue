@@ -160,16 +160,18 @@ export default {
         headerName: 'Description',
         flex: 1,
         editable: (params) => {
-          // Only adhoc items (blank description) can have description edited
+          // Only adhoc items (blank/null description) can have description edited
           if (!params.data) return false;
           const desc = params.data.Description;
-          return desc !== null && desc !== undefined && desc.trim() === '';
+          // Adhoc = null, undefined, or empty/whitespace string
+          return desc === null || desc === undefined || (typeof desc === 'string' && desc.trim() === '');
         },
         cellRenderer: (params) => {
-          // Check if this is truly an adhoc item (has description field but it's empty)
-          const hasField = params.data && params.data.hasOwnProperty('Description');
+          // Check if this is an adhoc item (null, undefined, or empty description)
+          if (!params.data) return '';
           const desc = params.value;
-          const isAdhoc = hasField && desc !== null && desc !== undefined && desc.trim() === '';
+          // Adhoc = null, undefined, or empty/whitespace string
+          const isAdhoc = desc === null || desc === undefined || (typeof desc === 'string' && desc.trim() === '');
 
           if (isAdhoc) {
             // For adhoc items, show first line of workup as description
@@ -350,22 +352,16 @@ export default {
         };
       }
 
-      // Apply subtle background color to adhoc items (blank description)
-      // Only if Description field exists and is explicitly empty/whitespace
-      // Don't apply if Description is undefined (data not loaded yet)
-      if (params.data &&
-          params.data.hasOwnProperty('Description') &&
-          params.data.Description !== null &&
-          params.data.Description !== undefined &&
-          typeof params.data.Description === 'string' &&
-          params.data.Description.trim() === '') {
+      // Apply subtle background color to adhoc items (null, undefined, or empty description)
+      if (params.data) {
+        const desc = params.data.Description;
+        const isAdhoc = desc === null || desc === undefined || (typeof desc === 'string' && desc.trim() === '');
 
-        // Debug logging
-        console.log('Adhoc item detected:', params.data.ItemCode, 'Description:', params.data.Description);
-
-        return {
-          backgroundColor: '#fffbf0' // Very light yellow background for adhoc items
-        };
+        if (isAdhoc) {
+          return {
+            backgroundColor: '#fffbf0' // Very light yellow background for adhoc items
+          };
+        }
       }
 
       return null;
