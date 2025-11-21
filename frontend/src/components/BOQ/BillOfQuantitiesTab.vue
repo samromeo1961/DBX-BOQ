@@ -429,36 +429,13 @@ export default {
           return;
         }
 
-        // For adhoc items, update the catalogue description from first line
+        // NOTE: For adhoc items, we do NOT update the catalogue description.
+        // Each bill line stores its own description in XDescription (workup).
+        // The first line of the workup is displayed as the item description.
+        // This allows multiple instances of the same adhoc item code to have
+        // different descriptions in the bill.
         if (isAdhocItem && firstLine && firstLine.trim()) {
-          try {
-            // First, get the full catalogue item to preserve all fields
-            const catalogueItemResult = await api.catalogue.getItem(item.ItemCode, selectedPriceLevel.value);
-
-            if (catalogueItemResult.success && catalogueItemResult.data) {
-              const fullItem = catalogueItemResult.data;
-
-              // Update with all fields preserved, only changing Description
-              const catalogueResult = await api.catalogue.updateItem({
-                PriceCode: item.ItemCode,
-                Description: firstLine.trim(),
-                CostCentre: fullItem.CostCentre,
-                PerCode: fullItem.PerCode,
-                Archived: fullItem.Archived || 0
-              });
-
-              if (catalogueResult.success) {
-                console.log(`✓ Updated catalogue description for ${item.ItemCode}: "${firstLine.trim()}"`);
-              } else {
-                console.warn('Failed to update catalogue description:', catalogueResult.message);
-              }
-            } else {
-              console.warn('Could not fetch catalogue item to update:', catalogueItemResult.message);
-            }
-          } catch (error) {
-            console.error('Error updating catalogue description:', error);
-            // Don't fail the whole save if catalogue update fails
-          }
+          console.log(`ℹ️ Adhoc item ${item.ItemCode} - description stored in workup, not catalogue`);
         }
 
         // Close modal and reload

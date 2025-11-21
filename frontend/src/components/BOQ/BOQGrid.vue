@@ -172,9 +172,19 @@ export default {
           const isAdhoc = hasField && desc !== null && desc !== undefined && desc.trim() === '';
 
           if (isAdhoc) {
+            // For adhoc items, show first line of workup as description
+            const workup = params.data.Workup || '';
+            const firstLine = workup.split('\n')[0]?.trim();
+
+            if (firstLine) {
+              return `<div style="display: flex; align-items: center; gap: 5px;">
+                <i class="bi bi-file-text text-warning" title="Adhoc item - description from workup"></i>
+                <span>${firstLine}</span>
+              </div>`;
+            }
             return `<div style="display: flex; align-items: center; gap: 5px;">
-              <i class="bi bi-file-text text-warning" title="Adhoc item - description from workup"></i>
-              <span style="font-style: italic; color: #6c757d;">(adhoc - add workup to set description)</span>
+              <i class="bi bi-file-text text-warning" title="Adhoc item - click to add workup"></i>
+              <span style="font-style: italic; color: #6c757d;">(adhoc - double-click to set description)</span>
             </div>`;
           }
           return desc || '';
