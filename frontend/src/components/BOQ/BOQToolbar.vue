@@ -5,8 +5,9 @@
       <div class="col-auto">
         <label class="form-label small mb-1">Job</label>
         <select
+          ref="jobSelectRef"
           :value="selectedJob"
-          @change="$emit('update:selectedJob', $event.target.value)"
+          @change="onJobChange($event.target.value)"
           class="form-select form-select-sm"
           style="min-width: 200px;"
           tabindex="1"
@@ -109,14 +110,30 @@ export default {
     'update:selectedCostCentre',
     'update:billDate',
     'refresh',
-    'toggleCatalogueSearch'
+    'toggleCatalogueSearch',
+    'jobSelected'
   ],
-  setup(props) {
+  setup(props, { emit }) {
     const api = useElectronAPI();
 
+    const jobSelectRef = ref(null);
     const jobs = ref([]);
     const costCentres = ref([]);
     const showOptionsModal = ref(false);
+
+    function onJobChange(value) {
+      emit('update:selectedJob', value);
+      if (value) {
+        // Emit event to signal cost centre panel should be focused
+        emit('jobSelected');
+      }
+    }
+
+    function focusJobSelect() {
+      if (jobSelectRef.value) {
+        jobSelectRef.value.focus();
+      }
+    }
 
     const billDateStr = computed(() => {
       if (!props.billDate) return '';
@@ -159,10 +176,13 @@ export default {
     });
 
     return {
+      jobSelectRef,
       jobs,
       costCentres,
       showOptionsModal,
-      billDateStr
+      billDateStr,
+      onJobChange,
+      focusJobSelect
     };
   }
 };

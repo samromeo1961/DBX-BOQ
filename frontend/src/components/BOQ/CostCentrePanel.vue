@@ -10,6 +10,7 @@
           <i class="bi bi-search"></i>
         </span>
         <input
+          ref="searchInputRef"
           type="text"
           class="form-control"
           placeholder="Search cost centres..."
@@ -125,6 +126,14 @@ export default {
     const costCentres = ref([]);
     const loading = ref(false);
     const searchText = ref('');
+    const searchInputRef = ref(null);
+
+    // Methods
+    function focusSearch() {
+      if (searchInputRef.value) {
+        searchInputRef.value.focus();
+      }
+    }
 
     // Computed
     const filteredCostCentres = computed(() => {
@@ -217,10 +226,12 @@ export default {
       costCentres,
       loading,
       searchText,
+      searchInputRef,
       showAllOption: props.showAllOption,
       filteredCostCentres,
       totalItemCount,
-      selectCostCentre
+      selectCostCentre,
+      focusSearch
     };
   }
 };

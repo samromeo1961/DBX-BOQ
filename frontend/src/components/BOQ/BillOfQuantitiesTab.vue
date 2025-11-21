@@ -2,6 +2,7 @@
   <div class="boq-tab h-100 d-flex flex-column">
     <!-- BOQ Toolbar -->
     <BOQToolbar
+      ref="toolbarRef"
       v-model:selectedJob="selectedJob"
       v-model:selectedPriceLevel="selectedPriceLevel"
       v-model:selectedLoad="selectedLoad"
@@ -10,6 +11,7 @@
       :catalogueVisible="catalogueSearchVisible"
       @refresh="loadBill"
       @toggleCatalogueSearch="catalogueSearchVisible = !catalogueSearchVisible"
+      @jobSelected="onJobSelected"
     />
 
     <!-- Main Content Area -->
@@ -18,6 +20,7 @@
       <div :class="['boq-main-section', 'd-flex', 'overflow-hidden', { 'with-catalogue-horizontal': catalogueSearchVisible && catalogueLayoutHorizontal }, { 'with-catalogue-vertical': catalogueSearchVisible && !catalogueLayoutHorizontal }]">
         <!-- Cost Centre Panel (Left Sidebar) -->
         <CostCentrePanel
+          ref="costCentrePanelRef"
           :selectedJob="selectedJob"
           v-model:selectedCostCentre="selectedCostCentre"
           :showAllOption="true"
@@ -109,6 +112,10 @@ export default {
   setup() {
     const api = useElectronAPI();
 
+    // Component refs
+    const toolbarRef = ref(null);
+    const costCentrePanelRef = ref(null);
+
     // State
     const selectedJob = ref(null);
     const selectedPriceLevel = ref(1);
@@ -122,6 +129,16 @@ export default {
     const availableLoads = ref([]);
     const showWorkupModal = ref(false);
     const selectedWorkupItem = ref({});
+
+    // Focus cost centre panel when job is selected
+    function onJobSelected() {
+      // Small delay to let the cost centre panel load
+      setTimeout(() => {
+        if (costCentrePanelRef.value && costCentrePanelRef.value.focusSearch) {
+          costCentrePanelRef.value.focusSearch();
+        }
+      }, 100);
+    }
 
     // Computed
     const billTotal = computed(() => {
@@ -398,6 +415,40 @@ export default {
         console.log('🚀 Initial load with job:', selectedJob.value, 'costCentre:', selectedCostCentre.value);
         loadBill();
       }
+
+      // Focus job selector after a small delay
+      setTimeout(() => {
+        if (toolbarRef.value && toolbarRef.value.focusJobSelect) {
+          toolbarRef.value.focusJobSelect();
+        }
+      }, 200);
+    });
+
+    // Save lastUsed values when they change
+    async function saveLastUsed() {
+      try {
+        const optionsResult = await api.boqOptions.get();
+        const options = optionsResult.success ? optionsResult.options : {};
+
+        await api.boqOptions.save({
+          ...options,
+          lastUsed: {
+            job: selectedJob.value,
+            priceLevel: selectedPriceLevel.value,
+            load: selectedLoad.value,
+            costCentre: selectedCostCentre.value
+          }
+        });
+      } catch (error) {
+        console.error('Error saving lastUsed:', error);
+      }
+    }
+
+    // Watch for changes and save lastUsed
+    watch([selectedJob, selectedCostCentre], () => {
+      if (isInitialized) {
+        saveLastUsed();
+      }
     });
 
     // Workup Modal Handlers
@@ -471,6 +522,8 @@ export default {
     }
 
     return {
+      toolbarRef,
+      costCentrePanelRef,
       selectedJob,
       selectedPriceLevel,
       selectedLoad,
@@ -490,7 +543,8 @@ export default {
       onDeleteItems,
       openWorkupModal,
       closeWorkupModal,
-      saveWorkup
+      saveWorkup,
+      onJobSelected
     };
   }
 };

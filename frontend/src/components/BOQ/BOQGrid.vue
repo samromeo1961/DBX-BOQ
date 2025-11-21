@@ -270,9 +270,9 @@ export default {
         editable: true,
         type: 'numericColumn',
         cellEditor: 'agSelectCellEditor',
-        cellEditorParams: {
+        cellEditorParams: () => ({
           values: props.availableLoads
-        }
+        })
       },
       {
         field: 'SupplierName',
@@ -312,10 +312,11 @@ export default {
     }
 
     // Watch for changes to billItems and refresh the grid
-    watch(() => props.billItems, () => {
+    watch(() => props.billItems, (newItems, oldItems) => {
       if (gridApi.value) {
         console.log('🔄 Refreshing grid with', props.billItems.length, 'items');
-        gridApi.value.refreshCells({ force: true });
+        // Use redrawRows to fully re-render rows (needed for custom cell renderers like Description showing Workup)
+        gridApi.value.redrawRows();
       }
     }, { deep: true });
 
