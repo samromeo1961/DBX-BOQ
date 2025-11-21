@@ -460,8 +460,9 @@ async function getPerCodes() {
         IsBold,
         Lcolor
       FROM ${perCodesTable}
-      WHERE CalculationRoutine != 8
-      ORDER BY Printout
+      ORDER BY
+        CASE WHEN CalculationRoutine = 8 THEN 0 ELSE 1 END,
+        Printout
     `;
 
     const result = await pool.request().query(query);

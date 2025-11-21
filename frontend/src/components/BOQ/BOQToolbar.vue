@@ -62,7 +62,7 @@
         <button
           class="btn btn-sm btn-secondary"
           @click="$emit('refresh')"
-          title="Refresh"
+          title="Refresh (F5)"
           tabindex="6"
         >
           <i class="bi bi-arrow-clockwise"></i>

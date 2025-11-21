@@ -92,7 +92,7 @@
 </template>
 
 <script>
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { useElectronAPI } from '@/composables/useElectronAPI';
 import BOQToolbar from './BOQToolbar.vue';
 import BOQGrid from './BOQGrid.vue';
@@ -196,6 +196,20 @@ export default {
         oldValue: oldValue,
         newValue: newValue
       });
+
+      // Handle Description field edit for adhoc items
+      // Description edits should save to XDescription (workup) as the first line
+      // Check oldValue since data.Description is already updated by AG Grid
+      if (colDef.field === 'Description') {
+        const wasAdhoc = oldValue === null || oldValue === undefined || (typeof oldValue === 'string' && oldValue.trim() === '');
+        if (wasAdhoc) {
+          // Set the new value as the workup (it will become the first line / description)
+          data.Workup = newValue;
+          // Reset Description to maintain adhoc state (description comes from workup)
+          data.Description = null;
+          console.log(`📝 Adhoc description set to workup: ${newValue}`);
+        }
+      }
 
       // Check for zero price and prompt for manual entry if option enabled
       if (colDef.field === 'UnitPrice' && data.UnitPrice === 0) {
@@ -422,7 +436,24 @@ export default {
           toolbarRef.value.focusJobSelect();
         }
       }, 200);
+
+      // Add F5 keyboard shortcut for refresh
+      window.addEventListener('keydown', handleKeyDown);
     });
+
+    // Cleanup keyboard listener
+    onUnmounted(() => {
+      window.removeEventListener('keydown', handleKeyDown);
+    });
+
+    // Handle keyboard shortcuts
+    function handleKeyDown(event) {
+      // F5 - Refresh
+      if (event.key === 'F5') {
+        event.preventDefault();
+        loadBill();
+      }
+    }
 
     // Save lastUsed values when they change
     async function saveLastUsed() {

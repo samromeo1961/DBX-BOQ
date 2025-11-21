@@ -86,9 +86,10 @@ export default {
     const workupText = ref('');
     const firstLinePreview = ref('');
 
-    // Check if this is an adhoc item (blank description)
+    // Check if this is an adhoc item (null, undefined, or empty description)
     const isAdhocItem = computed(() => {
-      return !props.itemData.Description || props.itemData.Description.trim() === '';
+      const desc = props.itemData.Description;
+      return desc === null || desc === undefined || (typeof desc === 'string' && desc.trim() === '');
     });
 
     // Extract first line for preview

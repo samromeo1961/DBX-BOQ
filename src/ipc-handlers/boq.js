@@ -254,8 +254,12 @@ async function updateItem(event, billItem) {
 
     // Special handling if BLoad is being changed (moving item to different load)
     // Since BLoad is part of the primary key, we need to use DELETE + INSERT
-    if (billItem.newBLoad !== undefined && billItem.newBLoad !== billItem.BLoad) {
-      console.log(`🔄 BOQ: Moving item from Load ${billItem.BLoad} to Load ${billItem.newBLoad}`);
+    // Ensure both values are numbers for proper comparison
+    const currentBLoad = parseInt(billItem.BLoad) || 0;
+    const newBLoad = billItem.newBLoad !== undefined ? parseInt(billItem.newBLoad) : undefined;
+
+    if (newBLoad !== undefined && newBLoad !== currentBLoad) {
+      console.log(`🔄 BOQ: Moving item from Load ${currentBLoad} to Load ${newBLoad}`);
 
       // First, get the current record to preserve all fields
       const selectQuery = `
@@ -300,7 +304,7 @@ async function updateItem(event, billItem) {
       const insertRequest = pool.request()
         .input('jobNo', billItem.JobNo)
         .input('costCentre', billItem.CostCentre)
-        .input('newBLoad', billItem.newBLoad)
+        .input('newBLoad', newBLoad)
         .input('lineNumber', billItem.LineNumber)
         .input('itemCode', currentRecord.ItemCode)
         .input('quantity', billItem.Quantity !== undefined ? billItem.Quantity : currentRecord.Quantity)
