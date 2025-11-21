@@ -262,7 +262,8 @@ export default {
         const updates = {
           supplier: formData.value.Supplier,
           delDate: formData.value.DelDate || null,
-          note: formData.value.Note || null
+          note: formData.value.Note || null,
+          status: formData.value.Supplier ? 'Ordered' : 'Draft'  // Set status to Ordered if supplier is provided
         };
 
         const result = await api.purchaseOrders.updateOrder(props.orderNumber, updates);

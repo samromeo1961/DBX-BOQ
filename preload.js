@@ -87,7 +87,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getUiPreferences: () => ipcRenderer.invoke('settings:get-ui-preferences'),
     updateUiPreferences: (preferences) => ipcRenderer.invoke('settings:update-ui-preferences', preferences),
     getAll: () => ipcRenderer.invoke('settings:get-all'),
-    resetAll: () => ipcRenderer.invoke('settings:reset-all')
+    resetAll: () => ipcRenderer.invoke('settings:reset-all'),
+    // API Keys
+    getApiKeys: () => ipcRenderer.invoke('settings:get-api-keys'),
+    updateApiKeys: (keys) => ipcRenderer.invoke('settings:update-api-keys', keys)
   },
 
   // Jobs
@@ -116,7 +119,46 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getContact: (code) => ipcRenderer.invoke('contacts:get-contact', code),
     createContact: (contactData) => ipcRenderer.invoke('contacts:create-contact', contactData),
     updateContact: (contactData) => ipcRenderer.invoke('contacts:update-contact', contactData),
+    deleteContact: (code) => ipcRenderer.invoke('contacts:delete-contact', code),
     getGroups: () => ipcRenderer.invoke('contacts:get-groups')
+  },
+
+  // Suppliers
+  suppliers: {
+    getList: (showArchived) => ipcRenderer.invoke('suppliers:get-list', showArchived),
+    getSupplier: (code) => ipcRenderer.invoke('suppliers:get-supplier', code),
+    createSupplier: (supplierData) => ipcRenderer.invoke('suppliers:create-supplier', supplierData),
+    updateSupplier: (supplierData) => ipcRenderer.invoke('suppliers:update-supplier', supplierData),
+    deleteSupplier: (code) => ipcRenderer.invoke('suppliers:delete-supplier', code),
+    getOrderHistory: (code) => ipcRenderer.invoke('suppliers:get-order-history', code),
+    getPaymentStrategies: () => ipcRenderer.invoke('suppliers:get-payment-strategies')
+  },
+
+  // Contact Groups
+  contactGroups: {
+    getList: () => ipcRenderer.invoke('contact-groups:get-list'),
+    getGroup: (code) => ipcRenderer.invoke('contact-groups:get-group', code),
+    createGroup: (groupData) => ipcRenderer.invoke('contact-groups:create-group', groupData)
+  },
+
+  // Supplier Groups
+  supplierGroups: {
+    getList: () => ipcRenderer.invoke('supplier-groups:get-list'),
+    getGroup: (code) => ipcRenderer.invoke('supplier-groups:get-group', code),
+    createGroup: (groupData) => ipcRenderer.invoke('supplier-groups:create-group', groupData)
+  },
+
+  // ABN Lookup
+  abnLookup: {
+    lookup: (abn, guid) => ipcRenderer.invoke('abn-lookup:lookup', abn, guid),
+    searchByName: (businessName, guid, options) => ipcRenderer.invoke('abn-lookup:search-by-name', businessName, guid, options),
+    verify: (abn, expectedData, guid) => ipcRenderer.invoke('abn-lookup:verify', abn, expectedData, guid)
+  },
+
+  // Australia Post Address
+  ausPost: {
+    searchAddresses: (query) => ipcRenderer.invoke('auspost:search-addresses', query),
+    validateAddress: (addressData) => ipcRenderer.invoke('auspost:validate-address', addressData)
   },
 
   // Catalogue
@@ -215,7 +257,93 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getAllSuppliers: () => ipcRenderer.invoke('po:get-all-suppliers'),
     addNominatedSupplier: (costCentre, supplierCode) => ipcRenderer.invoke('po:add-nominated-supplier', costCentre, supplierCode),
     removeNominatedSupplier: (costCentre, supplierCode) => ipcRenderer.invoke('po:remove-nominated-supplier', costCentre, supplierCode),
-    ensureStatusColumn: () => ipcRenderer.invoke('po:ensure-status-column')
+    ensureStatusColumn: () => ipcRenderer.invoke('po:ensure-status-column'),
+    cancelOrder: (orderNumber, reason) => ipcRenderer.invoke('po:cancel-order', orderNumber, reason),
+    sendCancellationEmail: (orderNumber, settings) => ipcRenderer.invoke('po:send-cancellation-email', orderNumber, settings)
+  },
+
+  // Email Settings
+  emailSettings: {
+    get: () => ipcRenderer.invoke('email-settings:get'),
+    save: (settings) => ipcRenderer.invoke('email-settings:save', settings),
+    update: (key, value) => ipcRenderer.invoke('email-settings:update', key, value),
+    reset: () => ipcRenderer.invoke('email-settings:reset'),
+    getSMTPConfig: () => ipcRenderer.invoke('email-settings:get-smtp-config'),
+    isConfigured: () => ipcRenderer.invoke('email-settings:is-configured')
+  },
+
+  // Email
+  email: {
+    sendTest: (to, settings) => ipcRenderer.invoke('email:send-test', { to, settings }),
+    sendPurchaseOrder: (orderNumber, to, subject, body, attachments) =>
+      ipcRenderer.invoke('email:send-purchase-order', { orderNumber, to, subject, body, attachments }),
+    sendGeneral: (params) => ipcRenderer.invoke('email:send-general', params)
+  },
+
+  // Documents (shared MSSQL metadata)
+  documents: {
+    get: (entityType, entityCode) => ipcRenderer.invoke('documents:get', { entityType, entityCode }),
+    add: (documentData) => ipcRenderer.invoke('documents:add', documentData),
+    update: (documentId, updates) => ipcRenderer.invoke('documents:update', { documentId, updates }),
+    delete: (documentId, deletedBy) => ipcRenderer.invoke('documents:delete', { documentId, deletedBy }),
+    getByType: (documentType) => ipcRenderer.invoke('documents:get-by-type', { documentType }),
+    search: (searchTerm, entityType, documentType) =>
+      ipcRenderer.invoke('documents:search', { searchTerm, entityType, documentType }),
+    logCommunication: (commData) => ipcRenderer.invoke('documents:log-communication', commData),
+    checkTableExists: () => ipcRenderer.invoke('documents:check-table-exists'),
+    initialize: () => ipcRenderer.invoke('documents:initialize'),
+    getByJob: (jobNo) => ipcRenderer.invoke('documents:get-by-job', jobNo),
+    getByBOQItem: (params) => ipcRenderer.invoke('documents:get-by-boq-item', params),
+    getByPurchaseOrder: (params) => ipcRenderer.invoke('documents:get-by-purchase-order', params),
+    link: (linkData) => ipcRenderer.invoke('documents:link', linkData),
+    unlink: (documentId) => ipcRenderer.invoke('documents:unlink', documentId)
+  },
+
+  // Document Settings (local path configuration)
+  documentSettings: {
+    get: () => ipcRenderer.invoke('document-settings:get'),
+    save: (settings) => ipcRenderer.invoke('document-settings:save', settings),
+    getBasePath: () => ipcRenderer.invoke('document-settings:get-base-path'),
+    setBasePath: (basePath) => ipcRenderer.invoke('document-settings:set-base-path', basePath),
+    isConfigured: () => ipcRenderer.invoke('document-settings:is-configured'),
+    buildPath: (entityType, entityCode, documentType) =>
+      ipcRenderer.invoke('document-settings:build-path', entityType, entityCode, documentType),
+    getFullPath: (relativePath) => ipcRenderer.invoke('document-settings:get-full-path', relativePath),
+    ensureFolder: (entityType, entityCode, documentType) =>
+      ipcRenderer.invoke('document-settings:ensure-folder', entityType, entityCode, documentType),
+    validatePath: (pathToCheck) => ipcRenderer.invoke('document-settings:validate-path', pathToCheck),
+    listFiles: (dirPath) => ipcRenderer.invoke('document-settings:list-files', dirPath),
+    reset: () => ipcRenderer.invoke('document-settings:reset'),
+    browseFolder: (defaultPath) => ipcRenderer.invoke('document-settings:browse-folder', defaultPath),
+    browseFile: (defaultPath, filters) => ipcRenderer.invoke('document-settings:browse-file', defaultPath, filters)
+  },
+
+  // Document Cache (SQLite file listing cache)
+  documentCache: {
+    initialize: () => ipcRenderer.invoke('document-cache:initialize'),
+    scan: (basePath, relativePath, entityType, entityCode, documentType) =>
+      ipcRenderer.invoke('document-cache:scan', basePath, relativePath, entityType, entityCode, documentType),
+    getFiles: (entityType, entityCode, documentType) =>
+      ipcRenderer.invoke('document-cache:get-files', entityType, entityCode, documentType),
+    search: (searchTerm, entityType) =>
+      ipcRenderer.invoke('document-cache:search', searchTerm, entityType),
+    getFilesInPath: (basePath, relativePath) =>
+      ipcRenderer.invoke('document-cache:get-files-in-path', basePath, relativePath),
+    clear: (basePath) => ipcRenderer.invoke('document-cache:clear', basePath),
+    getStats: () => ipcRenderer.invoke('document-cache:stats'),
+    needsRefresh: (maxAgeMinutes) => ipcRenderer.invoke('document-cache:needs-refresh', maxAgeMinutes),
+    listFiles: (dirPath) => ipcRenderer.invoke('document-cache:list-files', dirPath),
+    openFile: (filePath) => ipcRenderer.invoke('document-cache:open-file', filePath),
+    showInFolder: (itemPath) => ipcRenderer.invoke('document-cache:show-in-folder', itemPath),
+    copyFile: (sourcePath, destPath) => ipcRenderer.invoke('document-cache:copy-file', sourcePath, destPath),
+    createDirectory: (dirPath) => ipcRenderer.invoke('document-cache:create-directory', dirPath)
+  },
+
+  // Schema Migration (for DBA)
+  schema: {
+    checkStatus: () => ipcRenderer.invoke('schema:check-status'),
+    generateMigration: () => ipcRenderer.invoke('schema:generate-migration'),
+    generateFull: (systemDb, jobDb) => ipcRenderer.invoke('schema:generate-full', systemDb, jobDb)
   }
 });
 

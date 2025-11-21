@@ -277,7 +277,74 @@ export function useElectronAPI() {
     email: {
       sendTest: (to, settings) => window.electronAPI?.email.sendTest(to, settings),
       sendPurchaseOrder: (orderNumber, to, subject, body, attachments) =>
-        window.electronAPI?.email.sendPurchaseOrder(orderNumber, to, subject, body, attachments)
+        window.electronAPI?.email.sendPurchaseOrder(orderNumber, to, subject, body, attachments),
+      sendGeneral: (params) => window.electronAPI?.email.sendGeneral(params)
+    },
+
+    // Documents (shared MSSQL metadata)
+    documents: {
+      get: (entityType, entityCode) => window.electronAPI?.documents.get(entityType, entityCode),
+      add: (documentData) => window.electronAPI?.documents.add(documentData),
+      update: (documentId, updates) => window.electronAPI?.documents.update(documentId, updates),
+      delete: (documentId, deletedBy) => window.electronAPI?.documents.delete(documentId, deletedBy),
+      getByType: (documentType) => window.electronAPI?.documents.getByType(documentType),
+      search: (searchTerm, entityType, documentType) =>
+        window.electronAPI?.documents.search(searchTerm, entityType, documentType),
+      logCommunication: (commData) => window.electronAPI?.documents.logCommunication(commData),
+      checkTableExists: () => window.electronAPI?.documents.checkTableExists(),
+      initialize: () => window.electronAPI?.documents.initialize(),
+      getByJob: (jobNo) => window.electronAPI?.documents.getByJob(jobNo),
+      getByBOQItem: (params) => window.electronAPI?.documents.getByBOQItem(params),
+      getByPurchaseOrder: (params) => window.electronAPI?.documents.getByPurchaseOrder(params),
+      link: (linkData) => window.electronAPI?.documents.link(linkData),
+      unlink: (documentId) => window.electronAPI?.documents.unlink(documentId)
+    },
+
+    // Document Settings (local path configuration)
+    documentSettings: {
+      get: () => window.electronAPI?.documentSettings.get(),
+      save: (settings) => window.electronAPI?.documentSettings.save(settings),
+      getBasePath: () => window.electronAPI?.documentSettings.getBasePath(),
+      setBasePath: (basePath) => window.electronAPI?.documentSettings.setBasePath(basePath),
+      isConfigured: () => window.electronAPI?.documentSettings.isConfigured(),
+      buildPath: (entityType, entityCode, documentType) =>
+        window.electronAPI?.documentSettings.buildPath(entityType, entityCode, documentType),
+      getFullPath: (relativePath) => window.electronAPI?.documentSettings.getFullPath(relativePath),
+      ensureFolder: (entityType, entityCode, documentType) =>
+        window.electronAPI?.documentSettings.ensureFolder(entityType, entityCode, documentType),
+      validatePath: (pathToCheck) => window.electronAPI?.documentSettings.validatePath(pathToCheck),
+      listFiles: (dirPath) => window.electronAPI?.documentSettings.listFiles(dirPath),
+      reset: () => window.electronAPI?.documentSettings.reset(),
+      browseFolder: (defaultPath) => window.electronAPI?.documentSettings.browseFolder(defaultPath),
+      browseFile: (defaultPath, filters) => window.electronAPI?.documentSettings.browseFile(defaultPath, filters)
+    },
+
+    // Document Cache (SQLite file listing cache)
+    documentCache: {
+      initialize: () => window.electronAPI?.documentCache.initialize(),
+      scan: (basePath, relativePath, entityType, entityCode, documentType) =>
+        window.electronAPI?.documentCache.scan(basePath, relativePath, entityType, entityCode, documentType),
+      getFiles: (entityType, entityCode, documentType) =>
+        window.electronAPI?.documentCache.getFiles(entityType, entityCode, documentType),
+      search: (searchTerm, entityType) =>
+        window.electronAPI?.documentCache.search(searchTerm, entityType),
+      getFilesInPath: (basePath, relativePath) =>
+        window.electronAPI?.documentCache.getFilesInPath(basePath, relativePath),
+      clear: (basePath) => window.electronAPI?.documentCache.clear(basePath),
+      getStats: () => window.electronAPI?.documentCache.getStats(),
+      needsRefresh: (maxAgeMinutes) => window.electronAPI?.documentCache.needsRefresh(maxAgeMinutes),
+      listFiles: (dirPath) => window.electronAPI?.documentCache.listFiles(dirPath),
+      openFile: (filePath) => window.electronAPI?.documentCache.openFile(filePath),
+      showInFolder: (itemPath) => window.electronAPI?.documentCache.showInFolder(itemPath),
+      copyFile: (sourcePath, destPath) => window.electronAPI?.documentCache.copyFile(sourcePath, destPath),
+      createDirectory: (dirPath) => window.electronAPI?.documentCache.createDirectory(dirPath)
+    },
+
+    // Schema Migration (for DBA)
+    schema: {
+      checkStatus: () => window.electronAPI?.schema.checkStatus(),
+      generateMigration: () => window.electronAPI?.schema.generateMigration(),
+      generateFull: (systemDb, jobDb) => window.electronAPI?.schema.generateFull(systemDb, jobDb)
     },
 
     // Utility

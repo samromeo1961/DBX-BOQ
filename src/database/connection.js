@@ -1,6 +1,8 @@
 const sql = require('mssql');
+const credStore = require('./credentials-store');
 
 let dbPool = null;
+let currentDbConfig = null; // Track current database configuration
 
 /**
  * Connect to SQL Server database
@@ -84,8 +86,13 @@ async function connect(dbConfig) {
     }
 
     dbPool = await sql.connect(sqlConfig);
+    // Store the current config for later use
+    currentDbConfig = {
+      systemDatabase: dbConfig.systemDatabase || dbConfig.database,
+      jobDatabase: dbConfig.jobDatabase
+    };
     console.log('✓ Database connected successfully');
-    console.log('  System DB:', dbConfig.systemDatabase || dbConfig.database);
+    console.log('  System DB:', currentDbConfig.systemDatabase);
     console.log('  Job DB:', getJobDatabaseName(dbConfig) || 'AUTO-DETECT');
     return dbPool;
   } catch (error) {
@@ -253,15 +260,22 @@ function getPool() {
 /**
  * Get Job Database name from System Database name
  * Auto-detects by replacing 'SYS' with 'JOB'
- * @param {Object} dbConfig - Database configuration
+ * @param {Object} dbConfig - Database configuration (optional, uses credentials store for current settings)
  * @returns {string|null} Job database name
  */
 function getJobDatabaseName(dbConfig) {
-  if (dbConfig.jobDatabase) {
-    return dbConfig.jobDatabase;
+  // Use provided config, or check credentials store for most current settings
+  const config = dbConfig || credStore.getCredentials() || currentDbConfig;
+
+  if (!config) {
+    return null;
   }
 
-  const systemDb = dbConfig.systemDatabase || dbConfig.database;
+  if (config.jobDatabase) {
+    return config.jobDatabase;
+  }
+
+  const systemDb = config.systemDatabase || config.database;
   if (!systemDb) {
     return null;
   }
@@ -286,8 +300,15 @@ function getSystemDatabaseName(dbConfig) {
     return dbConfig.systemDatabase || dbConfig.database;
   }
 
-  if (dbPool && dbPool.config && dbPool.config.database) {
-    return dbPool.config.database;
+  // Check credentials store first for most current settings
+  const storedCreds = credStore.getCredentials();
+  if (storedCreds && storedCreds.systemDatabase) {
+    return storedCreds.systemDatabase;
+  }
+
+  // Fall back to stored currentDbConfig
+  if (currentDbConfig && currentDbConfig.systemDatabase) {
+    return currentDbConfig.systemDatabase;
   }
 
   return null;
@@ -300,6 +321,7 @@ async function close() {
   if (dbPool) {
     await sql.close();
     dbPool = null;
+    currentDbConfig = null;
     console.log('✓ Database connection closed');
   }
 }

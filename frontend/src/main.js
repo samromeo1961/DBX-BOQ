@@ -16,6 +16,8 @@ import './assets/style.css';
 // Import components
 import BillOfQuantitiesTab from './components/BOQ/BillOfQuantitiesTab.vue';
 import CatalogueTab from './components/Catalogue/CatalogueTab.vue';
+import ContactsTab from './components/Contacts/ContactsTab.vue';
+import SuppliersTab from './components/Suppliers/SuppliersTab.vue';
 import JobsTab from './components/Jobs/JobsTab.vue';
 import PurchaseOrdersTab from './components/PurchaseOrders/PurchaseOrdersTab.vue';
 import TemplatesTab from './components/Templates/TemplatesTab.vue';
@@ -43,6 +45,16 @@ const router = createRouter({
       path: '/catalogue',
       name: 'Catalogue',
       component: CatalogueTab
+    },
+    {
+      path: '/contacts',
+      name: 'Contacts',
+      component: ContactsTab
+    },
+    {
+      path: '/suppliers',
+      name: 'Suppliers',
+      component: SuppliersTab
     },
     {
       path: '/purchase-orders',

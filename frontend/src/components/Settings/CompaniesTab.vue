@@ -369,7 +369,9 @@ export default {
     async function saveCompanyForm() {
       saving.value = true;
       try {
-        await api.settings.saveCompany(formData.value);
+        // Convert reactive proxy to plain object for IPC serialization
+        const plainData = JSON.parse(JSON.stringify(formData.value));
+        await api.settings.saveCompany(plainData);
         await loadCompanies();
         closeModal();
         emit('reload');

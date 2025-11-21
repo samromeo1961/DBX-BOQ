@@ -12,6 +12,7 @@
               <i class="bi bi-search"></i>
             </span>
             <input
+              ref="searchInputRef"
               type="text"
               class="form-control"
               placeholder="Search jobs by number, name, client, address, suburb..."
@@ -53,6 +54,15 @@
             Restore Job
           </button>
           <button
+            class="btn btn-sm btn-outline-primary"
+            @click="openDocumentsModal"
+            :disabled="!selectedJob"
+            title="View job documents"
+          >
+            <i class="bi bi-folder2-open"></i>
+            Documents
+          </button>
+          <button
             class="btn btn-sm btn-success"
             @click="openCreateJobModal"
           >
@@ -79,6 +89,7 @@
         :defaultColDef="defaultColDef"
         :rowSelection="'single'"
         :getRowClass="getRowClass"
+        :rowHeight="36"
         :pagination="true"
         :paginationPageSize="50"
         :paginationPageSizeSelector="[25, 50, 100, 200]"
@@ -570,22 +581,52 @@
       </div>
     </div>
     <div v-if="showContactModal" class="modal-backdrop fade show" style="z-index: 1055;"></div>
+
+    <!-- Documents Modal -->
+    <div v-if="showDocumentsModal" class="modal fade show" style="display: block; z-index: 1060;" tabindex="-1" @click.self="showDocumentsModal = false">
+      <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">
+              <i class="bi bi-folder2-open me-2"></i>
+              Documents - {{ selectedJob?.JobNo }}
+            </h5>
+            <button type="button" class="btn-close" @click="showDocumentsModal = false"></button>
+          </div>
+          <div class="modal-body">
+            <JobDocumentsPanel
+              v-if="selectedJob"
+              :job-no="selectedJob.JobNo"
+            />
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showDocumentsModal = false">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div v-if="showDocumentsModal" class="modal-backdrop fade show" style="z-index: 1059;"></div>
   </div>
 </template>
 
 <script>
 import { ref, computed, onMounted, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import { AgGridVue } from 'ag-grid-vue3';
 import { useElectronAPI } from '@/composables/useElectronAPI';
+import JobDocumentsPanel from '@/components/Documents/JobDocumentsPanel.vue';
 
 export default {
   name: 'JobsTab',
   components: {
-    AgGridVue
+    AgGridVue,
+    JobDocumentsPanel
   },
   setup() {
     const api = useElectronAPI();
+    const router = useRouter();
 
+    const searchInputRef = ref(null);
     const jobs = ref([]);
     const jobStatuses = ref([]);
     const estimators = ref([]);
@@ -607,6 +648,7 @@ export default {
     const contactSearchText = ref('');
     const showContactDropdown = ref(false);
     const showContactModal = ref(false);
+    const showDocumentsModal = ref(false);
     const savingContact = ref(false);
     const contactErrorMessage = ref('');
     const contactSuccessMessage = ref('');
@@ -739,7 +781,8 @@ export default {
     }
 
     function onRowDoubleClicked(event) {
-      openEditJobModal(event.data);
+      // Navigate to Purchase Orders tab
+      router.push('/purchase-orders');
     }
 
     function onSelectionChanged() {
@@ -1046,6 +1089,16 @@ export default {
       contactSuccessMessage.value = '';
     }
 
+    function openDocumentsModal() {
+      console.log('openDocumentsModal called, selectedJob:', selectedJob.value);
+      if (selectedJob.value) {
+        console.log('Opening documents modal for job:', selectedJob.value.JobNo);
+        showDocumentsModal.value = true;
+      } else {
+        console.log('No job selected');
+      }
+    }
+
     async function saveContact() {
       if (!contactFormData.value.code || !contactFormData.value.name || !contactFormData.value.contactGroup) {
         contactErrorMessage.value = 'Contact code, name, and group are required';
@@ -1113,6 +1166,13 @@ export default {
       loadJobStatuses();
       loadEstimators();
       loadSupervisors();
+
+      // Auto-focus search field for quick searching
+      setTimeout(() => {
+        if (searchInputRef.value) {
+          searchInputRef.value.focus();
+        }
+      }, 100);
     });
 
     // Auto-populate Full Site Address when address components change
@@ -1134,6 +1194,7 @@ export default {
     );
 
     return {
+      searchInputRef,
       jobs,
       jobStatuses,
       estimators,
@@ -1158,6 +1219,8 @@ export default {
       contactSearchText,
       showContactDropdown,
       showContactModal,
+      showDocumentsModal,
+      openDocumentsModal,
       contactFormData,
       savingContact,
       contactErrorMessage,

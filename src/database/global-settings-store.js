@@ -40,6 +40,11 @@ const store = new Store({
       fontSize: 'medium',
       defaultStartupTab: 'jobs',
       confirmDialogs: true
+    },
+    apiKeys: {
+      googleMapsApiKey: '',
+      abnLookupGuid: '',
+      ausPostApiKey: ''
     }
   }
 });
@@ -374,6 +379,27 @@ function resetAllSettings() {
   return getAllSettings();
 }
 
+// ============================================================
+// API Keys Management
+// ============================================================
+
+/**
+ * Get API keys
+ */
+function getApiKeys() {
+  return store.get('apiKeys', {});
+}
+
+/**
+ * Update API keys
+ */
+function updateApiKeys(keys) {
+  const current = store.get('apiKeys', {});
+  const updated = { ...current, ...keys };
+  store.set('apiKeys', updated);
+  return updated;
+}
+
 module.exports = {
   // Company management
   getCompanies,
@@ -402,5 +428,9 @@ module.exports = {
   getUiPreferences,
   updateUiPreferences,
   getAllSettings,
-  resetAllSettings
+  resetAllSettings,
+
+  // API Keys
+  getApiKeys,
+  updateApiKeys
 };

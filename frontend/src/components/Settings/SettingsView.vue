@@ -65,6 +65,17 @@
           <li class="nav-item">
             <button
               class="nav-link"
+              :class="{ active: activeTab === 'boq-options' }"
+              @click="activeTab = 'boq-options'"
+              type="button"
+            >
+              <i class="bi bi-list-check me-1"></i>
+              BOQ Options
+            </button>
+          </li>
+          <li class="nav-item">
+            <button
+              class="nav-link"
               :class="{ active: activeTab === 'import-export' }"
               @click="activeTab = 'import-export'"
               type="button"
@@ -95,6 +106,50 @@
               UI Preferences
             </button>
           </li>
+          <li class="nav-item">
+            <button
+              class="nav-link"
+              :class="{ active: activeTab === 'api-keys' }"
+              @click="activeTab = 'api-keys'"
+              type="button"
+            >
+              <i class="bi bi-key me-1"></i>
+              API Keys
+            </button>
+          </li>
+          <li class="nav-item">
+            <button
+              class="nav-link"
+              :class="{ active: activeTab === 'email' }"
+              @click="activeTab = 'email'"
+              type="button"
+            >
+              <i class="bi bi-envelope-at me-1"></i>
+              Email / SMTP
+            </button>
+          </li>
+          <li class="nav-item">
+            <button
+              class="nav-link"
+              :class="{ active: activeTab === 'documents' }"
+              @click="activeTab = 'documents'"
+              type="button"
+            >
+              <i class="bi bi-folder2-open me-1"></i>
+              Documents
+            </button>
+          </li>
+          <li class="nav-item">
+            <button
+              class="nav-link"
+              :class="{ active: activeTab === 'database-schema' }"
+              @click="activeTab = 'database-schema'"
+              type="button"
+            >
+              <i class="bi bi-database-gear me-1"></i>
+              DB Schema
+            </button>
+          </li>
         </ul>
       </div>
     </div>
@@ -111,6 +166,9 @@
         <!-- Application Defaults Tab -->
         <ApplicationDefaultsTab v-if="activeTab === 'defaults'" />
 
+        <!-- BOQ Options Tab -->
+        <BOQOptionsTab v-if="activeTab === 'boq-options'" />
+
         <!-- Import/Export Tab -->
         <ImportExportTab v-if="activeTab === 'import-export'" />
 
@@ -119,6 +177,18 @@
 
         <!-- UI Preferences Tab -->
         <UiPreferencesTab v-if="activeTab === 'ui'" />
+
+        <!-- API Keys Tab -->
+        <ApiKeysTab v-if="activeTab === 'api-keys'" />
+
+        <!-- Email / SMTP Settings Tab -->
+        <EmailSettingsTab v-if="activeTab === 'email'" />
+
+        <!-- Documents Settings Tab -->
+        <DocumentsSettingsTab v-if="activeTab === 'documents'" />
+
+        <!-- Database Schema Tab -->
+        <DatabaseSchemaTab v-if="activeTab === 'database-schema'" />
       </div>
     </div>
 
@@ -151,9 +221,14 @@ import { useElectronAPI } from '@/composables/useElectronAPI';
 import CompaniesTab from './CompaniesTab.vue';
 import UsersTab from './UsersTab.vue';
 import ApplicationDefaultsTab from './ApplicationDefaultsTab.vue';
+import BOQOptionsTab from './BOQOptionsTab.vue';
 import ImportExportTab from './ImportExportTab.vue';
 import PdfSettingsTab from './PdfSettingsTab.vue';
 import UiPreferencesTab from './UiPreferencesTab.vue';
+import ApiKeysTab from './ApiKeysTab.vue';
+import EmailSettingsTab from './EmailSettingsTab.vue';
+import DocumentsSettingsTab from './DocumentsSettingsTab.vue';
+import DatabaseSchemaTab from './DatabaseSchemaTab.vue';
 
 export default {
   name: 'SettingsView',
@@ -161,9 +236,14 @@ export default {
     CompaniesTab,
     UsersTab,
     ApplicationDefaultsTab,
+    BOQOptionsTab,
     ImportExportTab,
     PdfSettingsTab,
-    UiPreferencesTab
+    UiPreferencesTab,
+    ApiKeysTab,
+    EmailSettingsTab,
+    DocumentsSettingsTab,
+    DatabaseSchemaTab
   },
   setup() {
     const api = useElectronAPI();

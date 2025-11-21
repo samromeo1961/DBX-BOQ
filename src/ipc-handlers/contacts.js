@@ -3,6 +3,70 @@ const { qualifyTable } = require('../database/query-builder');
 const credentialsStore = require('../database/credentials-store');
 
 /**
+ * Ensure the Archived and GST columns exist in the Contacts table
+ * Checks if columns exist and adds them if missing (runtime check pattern)
+ */
+async function ensureArchivedColumn() {
+  try {
+    const pool = getPool();
+    if (!pool) return false;
+
+    const dbConfig = credentialsStore.getCredentials();
+    if (!dbConfig) return false;
+
+    const dbName = dbConfig.systemDatabase || dbConfig.database; // System database
+
+    // Check if Archived and GST columns exist
+    const checkColumns = await pool.request().query(`
+      SELECT COLUMN_NAME
+      FROM [${dbName}].INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_NAME = 'Contacts'
+        AND COLUMN_NAME IN ('Archived', 'GST')
+        AND TABLE_SCHEMA = 'dbo'
+    `);
+
+    const columnNames = checkColumns.recordset.map(r => r.COLUMN_NAME);
+    const hasArchived = columnNames.includes('Archived');
+    const hasGST = columnNames.includes('GST');
+
+    // Add Archived column if missing
+    if (!hasArchived) {
+      console.log('Adding Archived column to Contacts table...');
+      try {
+        await pool.request().query(`
+          USE [${dbName}];
+          ALTER TABLE [dbo].[Contacts]
+          ADD [Archived] BIT NULL DEFAULT 0;
+        `);
+        console.log('✓ Archived column added successfully');
+      } catch (err) {
+        console.warn('Could not add Archived column (may lack permissions):', err.message);
+      }
+    }
+
+    // Add GST column if missing
+    if (!hasGST) {
+      console.log('Adding GST column to Contacts table...');
+      try {
+        await pool.request().query(`
+          USE [${dbName}];
+          ALTER TABLE [dbo].[Contacts]
+          ADD [GST] BIT NULL DEFAULT 0;
+        `);
+        console.log('✓ GST column added successfully');
+      } catch (err) {
+        console.warn('Could not add GST column (may lack permissions):', err.message);
+      }
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error ensuring Contacts columns:', error);
+    return false;
+  }
+}
+
+/**
  * Get list of contacts, optionally filtered by contact group
  * @param {string} contactGroup - Optional filter: ContactGroup code for filtering by Group_
  */
@@ -29,17 +93,48 @@ async function getContactsList(event, contactGroup = null) {
     const contactsTable = qualifyTable('Contacts', dbConfig);
     console.log('Contacts table name:', contactsTable);
 
+    // Ensure Archived column exists
+    await ensureArchivedColumn();
+
+    // Check if Archived and GST columns exist
+    const dbName = dbConfig.systemDatabase || dbConfig.database;
+    const checkColumns = await pool.request().query(`
+      SELECT COLUMN_NAME
+      FROM [${dbName}].INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_NAME = 'Contacts'
+        AND COLUMN_NAME IN ('Archived', 'GST')
+        AND TABLE_SCHEMA = 'dbo'
+    `);
+
+    const columnNames = checkColumns.recordset.map(r => r.COLUMN_NAME);
+    const hasArchived = columnNames.includes('Archived');
+    const hasGST = columnNames.includes('GST');
+
+    console.log('Contacts columns check:', { hasArchived, hasGST });
+
+    // Build query with conditional fields
+    const archivedField = hasArchived ? 'Archived' : 'CAST(0 AS BIT) AS Archived';
+    const gstField = hasGST ? 'GST' : 'CAST(0 AS BIT) AS GST';
+
     let query = `
       SELECT
         Code,
         Name,
+        Contact,
+        Dear,
         Address,
+        City AS Town,
+        State,
+        Postcode AS PostCode,
         Phone,
         Email,
         Mobile,
+        Fax,
         Group_,
         Debtor,
-        Supplier
+        Supplier,
+        ${archivedField},
+        ${gstField}
       FROM ${contactsTable}
     `;
 
@@ -50,6 +145,19 @@ async function getContactsList(event, contactGroup = null) {
     // Filter by Supplier flag if 'S' is passed (suppliers only)
     else if (contactGroup === 'S') {
       query += ` WHERE Supplier = 1`;
+    }
+    // Filter to show only non-supplier contacts (for Contacts tab)
+    else if (contactGroup === 'CONTACTS') {
+      query += ` WHERE Supplier = 0 ORDER BY Contact`;
+      // Return early since we have our own ORDER BY
+      console.log('Executing CONTACTS query:', query);
+      const result = await pool.request().query(query);
+      console.log('CONTACTS query returned', result.recordset.length, 'records');
+      return {
+        success: true,
+        data: result.recordset,
+        count: result.recordset.length
+      };
     }
     // Filter by Group_ if a number is passed
     else if (contactGroup && !isNaN(contactGroup)) {
@@ -112,17 +220,43 @@ async function getContact(code) {
 
     const contactsTable = qualifyTable('Contacts', dbConfig);
 
+    // Check if Archived and GST columns exist
+    const dbName = dbConfig.systemDatabase || dbConfig.database;
+    const checkColumns = await pool.request().query(`
+      SELECT COLUMN_NAME
+      FROM [${dbName}].INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_NAME = 'Contacts'
+        AND COLUMN_NAME IN ('Archived', 'GST')
+        AND TABLE_SCHEMA = 'dbo'
+    `);
+
+    const columnNames = checkColumns.recordset.map(r => r.COLUMN_NAME);
+    const hasArchived = columnNames.includes('Archived');
+    const hasGST = columnNames.includes('GST');
+
+    // Build query with conditional fields
+    const archivedField = hasArchived ? 'Archived' : 'CAST(0 AS BIT) AS Archived';
+    const gstField = hasGST ? 'GST' : 'CAST(0 AS BIT) AS GST';
+
     const query = `
       SELECT
         Code,
         Name,
+        Contact,
+        Dear,
         Address,
+        City AS Town,
+        State,
+        Postcode AS PostCode,
         Phone,
         Email,
         Mobile,
+        Fax,
         Group_,
         Debtor,
-        Supplier
+        Supplier,
+        ${archivedField},
+        ${gstField}
       FROM ${contactsTable}
       WHERE Code = @code
     `;
@@ -209,7 +343,7 @@ async function getContactGroups() {
 /**
  * Create a new contact
  */
-async function createContact(contactData) {
+async function createContact(event, contactData) {
   try {
     const pool = getPool();
     if (!pool) {
@@ -229,20 +363,51 @@ async function createContact(contactData) {
 
     const contactsTable = qualifyTable('Contacts', dbConfig);
 
+    // Ensure Archived and GST columns exist
+    await ensureArchivedColumn();
+
+    // Check if Archived and GST columns exist
+    const dbName = dbConfig.systemDatabase || dbConfig.database;
+    const checkColumns = await pool.request().query(`
+      SELECT COLUMN_NAME
+      FROM [${dbName}].INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_NAME = 'Contacts'
+        AND COLUMN_NAME IN ('Archived', 'GST')
+        AND TABLE_SCHEMA = 'dbo'
+    `);
+
+    const columnNames = checkColumns.recordset.map(r => r.COLUMN_NAME);
+    const hasArchived = columnNames.includes('Archived');
+    const hasGST = columnNames.includes('GST');
+
     const {
-      code,
-      name,
-      address,
-      phone,
-      email,
-      mobile,
-      state,
-      postcode,
-      contactGroup
+      Code,
+      Name,
+      Contact,
+      Dear,
+      Address,
+      Town,      // Frontend uses Town
+      City,      // Database uses City
+      State,
+      PostCode,  // Frontend uses PostCode
+      Postcode,  // Database uses Postcode
+      Phone,
+      Email,
+      Mobile,
+      Fax,
+      Group_,
+      Debtor,
+      Supplier,
+      Archived,
+      GST
     } = contactData;
 
+    // Map frontend field names to database field names
+    const cityValue = Town || City || null;
+    const postcodeValue = PostCode || Postcode || null;
+
     // Validate required fields
-    if (!code || !name) {
+    if (!Code || !Name) {
       return {
         success: false,
         message: 'Contact code and name are required'
@@ -257,7 +422,7 @@ async function createContact(contactData) {
     `;
 
     const checkResult = await pool.request()
-      .input('code', code)
+      .input('code', Code)
       .query(checkQuery);
 
     if (checkResult.recordset.length > 0) {
@@ -267,52 +432,79 @@ async function createContact(contactData) {
       };
     }
 
-    // Insert new contact
+    // Build INSERT query with conditional Archived and GST fields
+    const archivedColumn = hasArchived ? ', Archived' : '';
+    const archivedValue = hasArchived ? ', @archived' : '';
+    const gstColumn = hasGST ? ', GST' : '';
+    const gstValue = hasGST ? ', @gst' : '';
+
     const insertQuery = `
       INSERT INTO ${contactsTable} (
         Code,
         Name,
+        Contact,
+        Dear,
         Address,
+        City,
+        State,
+        Postcode,
         Phone,
         Email,
         Mobile,
-        State,
-        Postcode,
+        Fax,
         Group_,
         Debtor,
-        Supplier
+        Supplier${archivedColumn}${gstColumn}
       )
       VALUES (
         @code,
         @name,
+        @contact,
+        @dear,
         @address,
+        @city,
+        @state,
+        @postcode,
         @phone,
         @email,
         @mobile,
-        @state,
-        @postcode,
+        @fax,
         @group,
-        1,
-        0
+        @debtor,
+        @supplier${archivedValue}${gstValue}
       )
     `;
 
-    await pool.request()
-      .input('code', code)
-      .input('name', name)
-      .input('address', address || null)
-      .input('phone', phone || null)
-      .input('email', email || null)
-      .input('mobile', mobile || null)
-      .input('state', state || null)
-      .input('postcode', postcode || null)
-      .input('group', contactGroup ? parseInt(contactGroup) : null)
-      .query(insertQuery);
+    const request = pool.request()
+      .input('code', Code)
+      .input('name', Name)
+      .input('contact', Contact || null)
+      .input('dear', Dear || null)
+      .input('address', Address || null)
+      .input('city', cityValue)
+      .input('state', State || null)
+      .input('postcode', postcodeValue)
+      .input('phone', Phone || null)
+      .input('email', Email || null)
+      .input('mobile', Mobile || null)
+      .input('fax', Fax || null)
+      .input('group', Group_ || 1)
+      .input('debtor', Debtor ? 1 : 0)
+      .input('supplier', Supplier ? 1 : 0);
+
+    if (hasArchived) {
+      request.input('archived', Archived ? 1 : 0);
+    }
+    if (hasGST) {
+      request.input('gst', GST ? 1 : 0);
+    }
+
+    await request.query(insertQuery);
 
     return {
       success: true,
       message: 'Contact created successfully',
-      data: { code, name }
+      data: { Code, Name }
     };
 
   } catch (error) {
@@ -327,7 +519,7 @@ async function createContact(contactData) {
 /**
  * Update an existing contact
  */
-async function updateContact(contactData) {
+async function updateContact(event, contactData) {
   try {
     const pool = getPool();
     if (!pool) {
@@ -347,13 +539,160 @@ async function updateContact(contactData) {
 
     const contactsTable = qualifyTable('Contacts', dbConfig);
 
+    // Ensure Archived and GST columns exist
+    await ensureArchivedColumn();
+
+    // Check if Archived and GST columns exist
+    const dbName = dbConfig.systemDatabase || dbConfig.database;
+    const checkColumns = await pool.request().query(`
+      SELECT COLUMN_NAME
+      FROM [${dbName}].INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_NAME = 'Contacts'
+        AND COLUMN_NAME IN ('Archived', 'GST')
+        AND TABLE_SCHEMA = 'dbo'
+    `);
+
+    const columnNames = checkColumns.recordset.map(r => r.COLUMN_NAME);
+    const hasArchived = columnNames.includes('Archived');
+    const hasGST = columnNames.includes('GST');
+
     const {
-      code,
-      name,
-      address,
-      phone,
-      email
+      Code,
+      Name,
+      Contact,
+      Dear,
+      Address,
+      Town,      // Frontend uses Town
+      City,      // Database uses City
+      State,
+      PostCode,  // Frontend uses PostCode
+      Postcode,  // Database uses Postcode
+      Phone,
+      Email,
+      Mobile,
+      Fax,
+      Group_,
+      Debtor,
+      Supplier,
+      Archived,
+      GST
     } = contactData;
+
+    // Map frontend field names to database field names
+    const cityValue = Town || City || null;
+    const postcodeValue = PostCode || Postcode || null;
+
+    if (!Code) {
+      return {
+        success: false,
+        message: 'Contact code is required'
+      };
+    }
+
+    // Check if contact exists
+    const checkQuery = `
+      SELECT Code
+      FROM ${contactsTable}
+      WHERE Code = @code
+    `;
+
+    const checkResult = await pool.request()
+      .input('code', Code)
+      .query(checkQuery);
+
+    if (checkResult.recordset.length === 0) {
+      return {
+        success: false,
+        message: 'Contact not found'
+      };
+    }
+
+    // Build UPDATE query with conditional Archived and GST fields
+    const archivedField = hasArchived ? ', Archived = @archived' : '';
+    const gstField = hasGST ? ', GST = @gst' : '';
+
+    const updateQuery = `
+      UPDATE ${contactsTable}
+      SET
+        Name = @name,
+        Contact = @contact,
+        Dear = @dear,
+        Address = @address,
+        City = @city,
+        State = @state,
+        Postcode = @postcode,
+        Phone = @phone,
+        Email = @email,
+        Mobile = @mobile,
+        Fax = @fax,
+        Group_ = @group,
+        Debtor = @debtor,
+        Supplier = @supplier${archivedField}${gstField}
+      WHERE Code = @code
+    `;
+
+    const request = pool.request()
+      .input('code', Code)
+      .input('name', Name || null)
+      .input('contact', Contact || null)
+      .input('dear', Dear || null)
+      .input('address', Address || null)
+      .input('city', cityValue)
+      .input('state', State || null)
+      .input('postcode', postcodeValue)
+      .input('phone', Phone || null)
+      .input('email', Email || null)
+      .input('mobile', Mobile || null)
+      .input('fax', Fax || null)
+      .input('group', Group_ || 1)
+      .input('debtor', Debtor ? 1 : 0)
+      .input('supplier', Supplier ? 1 : 0);
+
+    if (hasArchived) {
+      request.input('archived', Archived ? 1 : 0);
+    }
+    if (hasGST) {
+      request.input('gst', GST ? 1 : 0);
+    }
+
+    await request.query(updateQuery);
+
+    return {
+      success: true,
+      message: 'Contact updated successfully'
+    };
+
+  } catch (error) {
+    console.error('Error updating contact:', error);
+    return {
+      success: false,
+      message: error.message
+    };
+  }
+}
+
+/**
+ * Delete a contact
+ */
+async function deleteContact(event, code) {
+  try {
+    const pool = getPool();
+    if (!pool) {
+      return {
+        success: false,
+        message: 'Database not connected'
+      };
+    }
+
+    const dbConfig = credentialsStore.getCredentials();
+    if (!dbConfig) {
+      return {
+        success: false,
+        message: 'No database configuration found'
+      };
+    }
+
+    const contactsTable = qualifyTable('Contacts', dbConfig);
 
     if (!code) {
       return {
@@ -380,32 +719,23 @@ async function updateContact(contactData) {
       };
     }
 
-    // Update contact
-    const updateQuery = `
-      UPDATE ${contactsTable}
-      SET
-        Name = @name,
-        Address = @address,
-        Phone = @phone,
-        Email = @email
+    // Delete contact
+    const deleteQuery = `
+      DELETE FROM ${contactsTable}
       WHERE Code = @code
     `;
 
     await pool.request()
       .input('code', code)
-      .input('name', name || null)
-      .input('address', address || null)
-      .input('phone', phone || null)
-      .input('email', email || null)
-      .query(updateQuery);
+      .query(deleteQuery);
 
     return {
       success: true,
-      message: 'Contact updated successfully'
+      message: 'Contact deleted successfully'
     };
 
   } catch (error) {
-    console.error('Error updating contact:', error);
+    console.error('Error deleting contact:', error);
     return {
       success: false,
       message: error.message
@@ -418,5 +748,6 @@ module.exports = {
   getContact,
   createContact,
   updateContact,
+  deleteContact,
   getContactGroups
 };

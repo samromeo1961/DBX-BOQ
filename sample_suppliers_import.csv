@@ -1,0 +1,6 @@
+Code,Name,Contact,Dear,Address,Town,State,PostCode,Email,Phone,Mobile,Fax,GST,ABN,Group_,PreventOrders,PreventPosting,SortText,Archived
+TEST001,ABC Plumbing Services,John Smith,John,123 Main Street,Sydney,NSW,2000,john@abcplumbing.com.au,02 9999 1111,0412 345 678,02 9999 1112,1,12345678901,1,0,0,ABC plumb,0
+TEST002,XYZ Electrical Pty Ltd,Sarah Johnson,Sarah,456 Industrial Ave,Melbourne,VIC,3000,sarah@xyzelectrical.com.au,03 8888 2222,0423 456 789,,1,98765432109,2,0,0,XYZ elec sparky,0
+TEST003,Quality Concrete Co,Mike Brown,Mike,789 Builder Road,Brisbane,QLD,4000,mike@qualityconcrete.com.au,07 7777 3333,0434 567 890,,1,11122233344,1,0,0,concrete quality,0
+TEST004,Small Contractor,Dave Wilson,Dave,321 Suburb St,Perth,WA,6000,dave@smallcontractor.com.au,08 6666 4444,0445 678 901,,0,,3,0,0,small dave,0
+TEST005,"Quotes & Supplies, Inc",Lisa Green,Lisa,654 Quote Street,Adelaide,SA,5000,lisa@quotesupplies.com.au,08 5555 5555,0456 789 012,08 5555 5556,1,22233344455,2,0,0,quotes comma,0

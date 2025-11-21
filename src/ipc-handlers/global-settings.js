@@ -144,6 +144,26 @@ async function getCompany(id) {
     const commonDb = 'COMMON';
     const companyTable = qualifyTable('Company', { ...dbConfig, systemDatabase: commonDb });
 
+    // Check which columns exist in Company table
+    const columnsResult = await pool.request().query(`
+      SELECT COLUMN_NAME
+      FROM [${commonDb}].INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_NAME = 'Company'
+        AND TABLE_SCHEMA = 'dbo'
+    `);
+    const existingColumns = columnsResult.recordset.map(r => r.COLUMN_NAME.toLowerCase());
+
+    const hasCol = (name) => existingColumns.includes(name.toLowerCase());
+
+    // Build dynamic column selections based on what exists
+    const emailCol = hasCol('Email') ? 'Email' : (hasCol('ATOEmail') ? 'ATOEmail' : 'NULL');
+    const addr1Col = hasCol('Address1') ? 'Address1' : (hasCol('ATOAddress') ? 'ATOAddress' : 'NULL');
+    const addr2Col = hasCol('Address2') ? 'Address2' : (hasCol('ATOAddress2') ? 'ATOAddress2' : 'NULL');
+    const addr3Col = hasCol('Address3') ? 'Address3' : 'NULL';
+    const postCodeCol = hasCol('PostCode') ? 'PostCode' : (hasCol('ATOPostCode') ? 'ATOPostCode' : 'NULL');
+    const phoneCol = hasCol('Telephone') ? 'Telephone' : (hasCol('ATOPhone') ? 'ATOPhone' : 'NULL');
+    const faxCol = hasCol('Fax') ? 'Fax' : (hasCol('ATOFax') ? 'ATOFax' : 'NULL');
+
     const result = await pool.request()
       .input('companyNumber', id)
       .query(`
@@ -153,13 +173,13 @@ async function getCompany(id) {
           SystemDBase as systemDatabase,
           JobDBase as jobDatabase,
           ACN as abn,
-          Address1 as address1,
-          Address2 as address2,
-          Address3 as address3,
-          PostCode as postCode,
-          Telephone as phone,
-          Fax as fax,
-          Email as email,
+          ${addr1Col} as address1,
+          ${addr2Col} as address2,
+          ${addr3Col} as address3,
+          ${postCodeCol} as postCode,
+          ${phoneCol} as phone,
+          ${faxCol} as fax,
+          ${emailCol} as email,
           ReportLogo as logoPath
         FROM ${companyTable}
         WHERE CompanyNumber = @companyNumber
@@ -384,8 +404,24 @@ async function getUsers() {
     // COMMON database is typically just named "COMMON"
     const commonDb = 'COMMON';
     const userTable = qualifyTable('User_', { ...dbConfig, systemDatabase: commonDb });
+    const contactsTable = qualifyTable('Contacts', dbConfig);
 
-    // Check if Phone column exists (optional column)
+    // Check if ContactCode column exists (links to Contacts table)
+    let hasContactCode = false;
+    try {
+      const checkColumn = await pool.request().query(`
+        SELECT COLUMN_NAME
+        FROM [${commonDb}].INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = 'User_'
+          AND COLUMN_NAME = 'ContactCode'
+          AND TABLE_SCHEMA = 'dbo'
+      `);
+      hasContactCode = checkColumn.recordset.length > 0;
+    } catch (err) {
+      console.log('⚠️  Could not check for ContactCode column, assuming it does not exist');
+    }
+
+    // Check if Phone column exists (fallback if no ContactCode)
     let hasPhoneColumn = false;
     try {
       const checkColumn = await pool.request().query(`
@@ -400,25 +436,63 @@ async function getUsers() {
       console.log('⚠️  Could not check for Phone column, assuming it does not exist');
     }
 
+    // Check if Email column exists in User_ table
+    let hasEmailColumn = false;
+    try {
+      const checkColumn = await pool.request().query(`
+        SELECT COLUMN_NAME
+        FROM [${commonDb}].INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = 'User_'
+          AND COLUMN_NAME = 'Email'
+          AND TABLE_SCHEMA = 'dbo'
+      `);
+      hasEmailColumn = checkColumn.recordset.length > 0;
+    } catch (err) {
+      console.log('⚠️  Could not check for Email column, assuming it does not exist');
+    }
+
     // Build query conditionally based on column availability
-    const phoneField = hasPhoneColumn ? 'Phone as phone,' : 'NULL as phone,';
+    // Priority: ContactCode (from Contacts) > Direct Phone column > NULL
+    // Use COLLATE DATABASE_DEFAULT to handle cross-database collation differences
+    const emailField = hasEmailColumn ? 'u.Email COLLATE DATABASE_DEFAULT' : 'NULL';
+    const contactFields = hasContactCode
+      ? `u.ContactCode,
+         c.Name COLLATE DATABASE_DEFAULT as contactName,
+         c.Phone COLLATE DATABASE_DEFAULT as phone,
+         c.Mobile COLLATE DATABASE_DEFAULT as mobile,
+         COALESCE(c.Email COLLATE DATABASE_DEFAULT, ${emailField}) as email,`
+      : hasPhoneColumn
+      ? `NULL as ContactCode,
+         NULL as contactName,
+         u.Phone COLLATE DATABASE_DEFAULT as phone,
+         NULL as mobile,
+         ${emailField} as email,`
+      : `NULL as ContactCode,
+         NULL as contactName,
+         NULL as phone,
+         NULL as mobile,
+         ${emailField} as email,`;
+
+    const contactJoin = hasContactCode
+      ? `LEFT JOIN ${contactsTable} c ON u.ContactCode COLLATE DATABASE_DEFAULT = c.Code COLLATE DATABASE_DEFAULT`
+      : '';
 
     const result = await pool.request().query(`
       SELECT
-        UserID as username,
-        UserName as fullName,
-        Email as email,
-        ${phoneField}
-        SecurityLevel as securityLevel,
-        UsePassword as usePassword,
-        BudLimit as budgetLimit,
-        OrderLimit as orderLimit,
-        VarLimit as variationLimit,
-        ETSLimit as etsLimit,
-        UserPermissions as permissions,
-        CASE WHEN SecurityLevel > 0 THEN 1 ELSE 0 END as active
-      FROM ${userTable}
-      ORDER BY UserName
+        u.UserID as username,
+        u.UserName as fullName,
+        ${contactFields}
+        u.SecurityLevel as securityLevel,
+        u.UsePassword as usePassword,
+        u.BudLimit as budgetLimit,
+        u.OrderLimit as orderLimit,
+        u.VarLimit as variationLimit,
+        u.ETSLimit as etsLimit,
+        u.UserPermissions as permissions,
+        CASE WHEN u.SecurityLevel > 0 THEN 1 ELSE 0 END as active
+      FROM ${userTable} u
+      ${contactJoin}
+      ORDER BY u.UserName
     `);
 
     // Don't return passwords
@@ -443,8 +517,24 @@ async function getUser(id) {
     // COMMON database is typically just named "COMMON"
     const commonDb = 'COMMON';
     const userTable = qualifyTable('User_', { ...dbConfig, systemDatabase: commonDb });
+    const contactsTable = qualifyTable('Contacts', dbConfig);
 
-    // Check if Phone column exists (optional column)
+    // Check if ContactCode column exists (links to Contacts table)
+    let hasContactCode = false;
+    try {
+      const checkColumn = await pool.request().query(`
+        SELECT COLUMN_NAME
+        FROM [${commonDb}].INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = 'User_'
+          AND COLUMN_NAME = 'ContactCode'
+          AND TABLE_SCHEMA = 'dbo'
+      `);
+      hasContactCode = checkColumn.recordset.length > 0;
+    } catch (err) {
+      console.log('⚠️  Could not check for ContactCode column, assuming it does not exist');
+    }
+
+    // Check if Phone column exists (fallback if no ContactCode)
     let hasPhoneColumn = false;
     try {
       const checkColumn = await pool.request().query(`
@@ -459,27 +549,64 @@ async function getUser(id) {
       console.log('⚠️  Could not check for Phone column, assuming it does not exist');
     }
 
+    // Check if Email column exists in User_ table
+    let hasEmailColumn = false;
+    try {
+      const checkColumn = await pool.request().query(`
+        SELECT COLUMN_NAME
+        FROM [${commonDb}].INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = 'User_'
+          AND COLUMN_NAME = 'Email'
+          AND TABLE_SCHEMA = 'dbo'
+      `);
+      hasEmailColumn = checkColumn.recordset.length > 0;
+    } catch (err) {
+      console.log('⚠️  Could not check for Email column, assuming it does not exist');
+    }
+
     // Build query conditionally based on column availability
-    const phoneField = hasPhoneColumn ? 'Phone as phone,' : 'NULL as phone,';
+    // Use COLLATE DATABASE_DEFAULT to handle cross-database collation differences
+    const emailField = hasEmailColumn ? 'u.Email COLLATE DATABASE_DEFAULT' : 'NULL';
+    const contactFields = hasContactCode
+      ? `u.ContactCode,
+         c.Name COLLATE DATABASE_DEFAULT as contactName,
+         c.Phone COLLATE DATABASE_DEFAULT as phone,
+         c.Mobile COLLATE DATABASE_DEFAULT as mobile,
+         COALESCE(c.Email COLLATE DATABASE_DEFAULT, ${emailField}) as email,`
+      : hasPhoneColumn
+      ? `NULL as ContactCode,
+         NULL as contactName,
+         u.Phone COLLATE DATABASE_DEFAULT as phone,
+         NULL as mobile,
+         ${emailField} as email,`
+      : `NULL as ContactCode,
+         NULL as contactName,
+         NULL as phone,
+         NULL as mobile,
+         ${emailField} as email,`;
+
+    const contactJoin = hasContactCode
+      ? `LEFT JOIN ${contactsTable} c ON u.ContactCode COLLATE DATABASE_DEFAULT = c.Code COLLATE DATABASE_DEFAULT`
+      : '';
 
     const result = await pool.request()
       .input('userId', id)
       .query(`
         SELECT
-          UserID as username,
-          UserName as fullName,
-          Email as email,
-          ${phoneField}
-          SecurityLevel as securityLevel,
-          UsePassword as usePassword,
-          BudLimit as budgetLimit,
-          OrderLimit as orderLimit,
-          VarLimit as variationLimit,
-          ETSLimit as etsLimit,
-          UserPermissions as permissions,
-          CASE WHEN SecurityLevel > 0 THEN 1 ELSE 0 END as active
-        FROM ${userTable}
-        WHERE UserID = @userId
+          u.UserID as username,
+          u.UserName as fullName,
+          ${contactFields}
+          u.SecurityLevel as securityLevel,
+          u.UsePassword as usePassword,
+          u.BudLimit as budgetLimit,
+          u.OrderLimit as orderLimit,
+          u.VarLimit as variationLimit,
+          u.ETSLimit as etsLimit,
+          u.UserPermissions as permissions,
+          CASE WHEN u.SecurityLevel > 0 THEN 1 ELSE 0 END as active
+        FROM ${userTable} u
+        ${contactJoin}
+        WHERE u.UserID = @userId
       `);
 
     return result.recordset[0] || null;
@@ -518,7 +645,22 @@ async function saveUser(user) {
     const commonDb = 'COMMON';
     const userTable = qualifyTable('User_', { ...dbConfig, systemDatabase: commonDb });
 
-    // Check if Phone column exists (optional column)
+    // Check if ContactCode column exists (optional column)
+    let hasContactCode = false;
+    try {
+      const checkColumn = await pool.request().query(`
+        SELECT COLUMN_NAME
+        FROM [${commonDb}].INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = 'User_'
+          AND COLUMN_NAME = 'ContactCode'
+          AND TABLE_SCHEMA = 'dbo'
+      `);
+      hasContactCode = checkColumn.recordset.length > 0;
+    } catch (err) {
+      console.log('⚠️  Could not check for ContactCode column, assuming it does not exist');
+    }
+
+    // Check if Phone column exists (optional column, fallback)
     let hasPhoneColumn = false;
     try {
       const checkColumn = await pool.request().query(`
@@ -540,6 +682,8 @@ async function saveUser(user) {
       passwordLength: user.password?.length,
       active: user.active,
       securityLevel: user.securityLevel,
+      contactCode: user.contactCode,
+      hasContactCode,
       hasPhoneColumn
     });
 
@@ -585,12 +729,18 @@ async function saveUser(user) {
         .input('etsLimit', user.etsLimit || 0)
         .input('permissions', user.permissions || null);
 
-      // Conditionally add phone input if column exists
+      // Conditionally add contactCode input if column exists
+      if (hasContactCode) {
+        request.input('contactCode', user.contactCode || null);
+      }
+
+      // Conditionally add phone input if column exists (fallback)
       if (hasPhoneColumn) {
         request.input('phone', user.phone || null);
       }
 
       // Build UPDATE query conditionally
+      const contactCodeSet = hasContactCode ? 'ContactCode = @contactCode,' : '';
       const phoneSet = hasPhoneColumn ? 'Phone = @phone,' : '';
 
       let updateQuery = `
@@ -598,6 +748,7 @@ async function saveUser(user) {
         SET
           UserName = @fullName,
           Email = @email,
+          ${contactCodeSet}
           ${phoneSet}
           SecurityLevel = @securityLevel,
           UsePassword = @usePassword,
@@ -626,6 +777,8 @@ async function saveUser(user) {
       }
 
       // Build INSERT query conditionally based on column availability
+      const contactCodeColumn = hasContactCode ? 'ContactCode,' : '';
+      const contactCodeValue = hasContactCode ? '@contactCode,' : '';
       const phoneColumn = hasPhoneColumn ? 'Phone,' : '';
       const phoneValue = hasPhoneColumn ? '@phone,' : '';
 
@@ -642,18 +795,23 @@ async function saveUser(user) {
         .input('etsLimit', user.etsLimit || 0)
         .input('permissions', user.permissions || null);
 
-      // Conditionally add phone input if column exists
+      // Conditionally add contactCode input if column exists
+      if (hasContactCode) {
+        insertRequest.input('contactCode', user.contactCode || null);
+      }
+
+      // Conditionally add phone input if column exists (fallback)
       if (hasPhoneColumn) {
         insertRequest.input('phone', user.phone || null);
       }
 
       await insertRequest.query(`
           INSERT INTO ${userTable} (
-            UserID, UserName, Email, ${phoneColumn} Password, SecurityLevel,
+            UserID, UserName, Email, ${contactCodeColumn} ${phoneColumn} Password, SecurityLevel,
             UsePassword, BudLimit, OrderLimit, VarLimit, ETSLimit,
             UserPermissions
           ) VALUES (
-            @userId, @fullName, @email, ${phoneValue} @password, @securityLevel,
+            @userId, @fullName, @email, ${contactCodeValue} ${phoneValue} @password, @securityLevel,
             @usePassword, @budLimit, @orderLimit, @varLimit, @etsLimit,
             @permissions
           )
@@ -779,32 +937,59 @@ async function getApplicationDefaults() {
     const commonDb = 'COMMON';
     const settingsTable = qualifyTable('Settings', { ...dbConfig, systemDatabase: commonDb });
 
+    // Check if CurrencySymbol column exists (optional column)
+    let hasCurrencySymbol = false;
+    try {
+      const checkColumn = await pool.request().query(`
+        SELECT COLUMN_NAME
+        FROM [${commonDb}].INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = 'Settings'
+          AND COLUMN_NAME = 'CurrencySymbol'
+          AND TABLE_SCHEMA = 'dbo'
+      `);
+      hasCurrencySymbol = checkColumn.recordset.length > 0;
+    } catch (err) {
+      console.log('⚠️  Could not check for CurrencySymbol column, assuming it does not exist');
+    }
+
+    // Build query conditionally
+    const currencyField = hasCurrencySymbol ? 'CurrencySymbol as currencySymbol,' : '';
+
     const result = await pool.request().query(`
       SELECT TOP 1
         PriceLevels as defaultPriceLevel,
-        DocFldr as defaultDocFolder,
-        CurrencySymbol as currencySymbol,
-        POFldr as poFolder
+        DocFldr as defaultDocFolder
+        ${currencyField ? ', ' + currencyField.replace(/,$/, '') : ''}
       FROM ${settingsTable}
     `);
 
     const settings = result.recordset[0] || {};
+    const baseFolder = settings.defaultDocFolder || '';
+
+    // Get UI preferences from local storage
+    const uiPrefs = await getUiPreferences();
 
     return {
       defaultPriceLevel: settings.defaultPriceLevel || 1,
-      defaultDocFolder: settings.defaultDocFolder || '',
+      defaultDocFolder: baseFolder,
       currencySymbol: settings.currencySymbol || '$',
-      poFolder: settings.poFolder || '',
-      decimalPlaces: 2,
-      dateFormat: 'DD/MM/YYYY',
-      showArchivedByDefault: false,
-      defaultTab: 'jobs'
+      // Derive PO folder from base document folder
+      poFolder: baseFolder ? `${baseFolder}\\POS` : '',
+      docsFolder: baseFolder ? `${baseFolder}\\DOCS` : '',
+      // UI preferences from local storage
+      decimalPlaces: uiPrefs.decimalPlaces || 2,
+      dateFormat: uiPrefs.dateFormat || 'DD/MM/YYYY',
+      showArchivedByDefault: uiPrefs.showArchivedByDefault || false,
+      defaultTab: uiPrefs.defaultStartupTab || 'jobs'
     };
   } catch (error) {
     console.error('Error getting application defaults:', error);
     return {
       defaultPriceLevel: 1,
+      defaultDocFolder: '',
       currencySymbol: '$',
+      poFolder: '',
+      docsFolder: '',
       decimalPlaces: 2,
       dateFormat: 'DD/MM/YYYY',
       showArchivedByDefault: false,
@@ -828,20 +1013,65 @@ async function updateApplicationDefaults(defaults) {
     const commonDb = 'COMMON';
     const settingsTable = qualifyTable('Settings', { ...dbConfig, systemDatabase: commonDb });
 
-    // Update only the fields we manage
-    await pool.request()
-      .input('priceLevels', defaults.defaultPriceLevel)
-      .input('docFldr', defaults.defaultDocFolder || '')
-      .input('currencySymbol', defaults.currencySymbol || '$')
-      .input('poFldr', defaults.poFolder || '')
-      .query(`
-        UPDATE ${settingsTable}
-        SET
-          PriceLevels = @priceLevels,
-          DocFldr = @docFldr,
-          CurrencySymbol = @currencySymbol,
-          POFldr = @poFldr
+    // Check if CurrencySymbol column exists (optional column)
+    let hasCurrencySymbol = false;
+    try {
+      const checkColumn = await pool.request().query(`
+        SELECT COLUMN_NAME
+        FROM [${commonDb}].INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = 'Settings'
+          AND COLUMN_NAME = 'CurrencySymbol'
+          AND TABLE_SCHEMA = 'dbo'
       `);
+      hasCurrencySymbol = checkColumn.recordset.length > 0;
+    } catch (err) {
+      console.log('⚠️  Could not check for CurrencySymbol column, assuming it does not exist');
+    }
+
+    // If CurrencySymbol column doesn't exist, create it
+    if (!hasCurrencySymbol) {
+      try {
+        await pool.request().query(`
+          ALTER TABLE ${settingsTable}
+          ADD [CurrencySymbol] NVARCHAR(3) NULL
+        `);
+        console.log('✓ Added CurrencySymbol column to Settings table');
+        hasCurrencySymbol = true;
+      } catch (err) {
+        console.error('⚠️  Could not add CurrencySymbol column:', err.message);
+      }
+    }
+
+    // Build UPDATE query conditionally based on column availability
+    const request = pool.request()
+      .input('priceLevels', defaults.defaultPriceLevel)
+      .input('docFldr', defaults.defaultDocFolder || '');
+
+    let updateQuery = `
+      UPDATE ${settingsTable}
+      SET
+        PriceLevels = @priceLevels,
+        DocFldr = @docFldr
+    `;
+
+    // Only update CurrencySymbol if column exists
+    if (hasCurrencySymbol) {
+      request.input('currencySymbol', defaults.currencySymbol || '$');
+      updateQuery += `,
+        CurrencySymbol = @currencySymbol`;
+    }
+
+    await request.query(updateQuery);
+
+    // Save UI preferences locally (not stored in database)
+    const uiPrefs = {
+      decimalPlaces: defaults.decimalPlaces,
+      dateFormat: defaults.dateFormat,
+      showArchivedByDefault: defaults.showArchivedByDefault,
+      defaultStartupTab: defaults.defaultTab  // Map defaultTab to defaultStartupTab
+    };
+
+    await updateUiPreferences(uiPrefs);
 
     return await getApplicationDefaults();
   } catch (error) {
@@ -919,11 +1149,12 @@ async function getPdfSettings() {
 
     const result = await pool.request().query(`
       SELECT TOP 1
-        POFldr as poFolder
+        DocFldr as defaultDocFolder
       FROM ${settingsTable}
     `);
 
     const settings = result.recordset[0] || {};
+    const baseFolder = settings.defaultDocFolder || '';
 
     return {
       pageSize: 'A4',
@@ -934,7 +1165,8 @@ async function getPdfSettings() {
       showLogo: true,
       showWatermark: false,
       watermarkText: 'DRAFT',
-      poFolder: settings.poFolder || ''
+      // Derive PO folder from base document folder
+      poFolder: baseFolder ? `${baseFolder}\\POS` : ''
     };
   } catch (error) {
     console.error('Error getting PDF settings:', error);
@@ -946,7 +1178,8 @@ async function getPdfSettings() {
       marginRight: 20,
       showLogo: true,
       showWatermark: false,
-      watermarkText: 'DRAFT'
+      watermarkText: 'DRAFT',
+      poFolder: ''
     };
   }
 }
@@ -956,27 +1189,8 @@ async function getPdfSettings() {
  */
 async function updatePdfSettings(settings) {
   try {
-    const pool = getPool();
-    if (!pool) {
-      throw new Error('Database not connected');
-    }
-
-    const dbConfig = credStore.getCredentials();
-    // COMMON database is typically just named "COMMON"
-    const commonDb = 'COMMON';
-    const settingsTable = qualifyTable('Settings', { ...dbConfig, systemDatabase: commonDb });
-
-    // Update PO folder in database
-    if (settings.poFolder !== undefined) {
-      await pool.request()
-        .input('poFldr', settings.poFolder)
-        .query(`
-          UPDATE ${settingsTable}
-          SET POFldr = @poFldr
-        `);
-    }
-
-    // Store other PDF settings locally
+    // Note: poFolder is derived from DocFldr and not stored separately
+    // Store PDF settings locally (margins, page size, etc.)
     const current = localPrefsStore.get('pdfSettings') || {};
     const updated = { ...current, ...settings };
     localPrefsStore.set('pdfSettings', updated);

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, dialog } = require('electron');
 const path = require('path');
 const Store = require('electron-store');
 
@@ -17,10 +17,22 @@ const catalogueTemplatesHandlers = require('./src/ipc-handlers/catalogue-templat
 const catalogueImagesHandlers = require('./src/ipc-handlers/catalogue-images');
 const purchaseOrdersHandlers = require('./src/ipc-handlers/purchase-orders');
 const contactsHandlers = require('./src/ipc-handlers/contacts');
+const suppliersHandlers = require('./src/ipc-handlers/suppliers');
+const contactGroupsHandlers = require('./src/ipc-handlers/contact-groups');
+const supplierGroupsHandlers = require('./src/ipc-handlers/supplier-groups');
+const abnLookupHandlers = require('./src/ipc-handlers/abn-lookup');
+const ausPostHandlers = require('./src/ipc-handlers/auspost-address');
 const boqOptionsStore = require('./src/database/boq-options-store');
 const credentialsStore = require('./src/database/credentials-store');
 const importTemplatesStore = require('./src/database/import-templates-store');
+const emailSettingsStore = require('./src/database/email-settings-store');
+const emailHandlers = require('./src/ipc-handlers/email');
 const globalSettingsHandlers = require('./src/ipc-handlers/global-settings');
+const globalSettingsStore = require('./src/database/global-settings-store');
+const documentHandlers = require('./src/ipc-handlers/documents');
+const documentSettingsStore = require('./src/database/document-settings-store');
+const documentCache = require('./src/database/document-cache');
+const schemaMigration = require('./src/database/schema-migration');
 
 // Initialize electron-store for settings
 const store = new Store();
@@ -35,6 +47,7 @@ function createMainWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
+    show: false,  // Don't show until ready-to-show event
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -51,6 +64,12 @@ function createMainWindow() {
   } else {
     mainWindow.loadFile(path.join(__dirname, 'frontend', 'dist', 'index.html'));
   }
+
+  // Maximize window when ready to show
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.maximize();
+    mainWindow.show();
+  });
 
   // Create menu
   createMenu();
@@ -174,6 +193,9 @@ app.whenReady().then(async () => {
       // Ensure Images column exists in PriceList table
       await catalogueImagesHandlers.ensureImagesColumn();
 
+      // Initialize documents table
+      await documentHandlers.initializeDocuments();
+
       createMainWindow();
     } catch (error) {
       console.error('Failed to connect to database:', error);
@@ -233,6 +255,9 @@ ipcMain.handle('db:save-connection', async (event, dbConfig) => {
 
     // Ensure estimate price columns exist in Prices table
     await estimatePricesSchemaHandlers.ensureEstimatePriceColumns();
+
+    // Initialize documents table
+    await documentHandlers.initializeDocuments();
 
     // Run diagnostics to check for duplicate data
     console.log('\n=== Running Catalogue Diagnostics ===');
@@ -299,6 +324,25 @@ ipcMain.handle('boq-options:reset', () => boqOptionsStore.resetOptions());
 ipcMain.handle('boq-options:get-defaults', () => boqOptionsStore.getDefaults());
 ipcMain.handle('boq-options:save-last-used', (event, lastUsed) => boqOptionsStore.saveLastUsed(lastUsed));
 
+// ============================================================
+// IPC Handlers - Email Settings
+// ============================================================
+
+ipcMain.handle('email-settings:get', () => emailSettingsStore.getEmailSettings());
+ipcMain.handle('email-settings:save', (event, settings) => emailSettingsStore.saveEmailSettings(settings));
+ipcMain.handle('email-settings:update', (event, key, value) => emailSettingsStore.updateEmailSetting(key, value));
+ipcMain.handle('email-settings:reset', () => emailSettingsStore.resetEmailSettings());
+ipcMain.handle('email-settings:get-smtp-config', () => emailSettingsStore.getSMTPConfig());
+ipcMain.handle('email-settings:is-configured', () => emailSettingsStore.isEmailConfigured());
+
+// ============================================================
+// IPC Handlers - Email
+// ============================================================
+
+ipcMain.handle('email:send-test', emailHandlers.sendTestEmail);
+ipcMain.handle('email:send-purchase-order', emailHandlers.sendPurchaseOrder);
+ipcMain.handle('email:send-general', emailHandlers.sendGeneral);
+
 // Import Templates
 ipcMain.handle('import-templates:get-all', () => importTemplatesStore.getTemplates());
 ipcMain.handle('import-templates:get', (event, id) => importTemplatesStore.getTemplate(id));
@@ -334,6 +378,10 @@ ipcMain.handle('settings:update-ui-preferences', (event, preferences) => globalS
 ipcMain.handle('settings:get-all', () => globalSettingsHandlers.getAllSettings());
 ipcMain.handle('settings:reset-all', () => globalSettingsHandlers.resetAllSettings());
 
+// API Keys
+ipcMain.handle('settings:get-api-keys', () => globalSettingsStore.getApiKeys());
+ipcMain.handle('settings:update-api-keys', (event, keys) => globalSettingsStore.updateApiKeys(keys));
+
 // ============================================================
 // IPC Handlers - Jobs (from Job database)
 // ============================================================
@@ -362,9 +410,53 @@ ipcMain.handle('cost-centres:get-with-budget', (event, jobNo) => costCentresHand
 
 ipcMain.handle('contacts:get-list', (event, contactType) => contactsHandlers.getContactsList(event, contactType));
 ipcMain.handle('contacts:get-contact', (event, code) => contactsHandlers.getContact(code));
-ipcMain.handle('contacts:create-contact', (event, contactData) => contactsHandlers.createContact(contactData));
-ipcMain.handle('contacts:update-contact', (event, contactData) => contactsHandlers.updateContact(contactData));
+ipcMain.handle('contacts:create-contact', (event, contactData) => contactsHandlers.createContact(event, contactData));
+ipcMain.handle('contacts:update-contact', (event, contactData) => contactsHandlers.updateContact(event, contactData));
+ipcMain.handle('contacts:delete-contact', (event, code) => contactsHandlers.deleteContact(event, code));
 ipcMain.handle('contacts:get-groups', contactsHandlers.getContactGroups);
+
+// ============================================================
+// IPC Handlers - Suppliers
+// ============================================================
+
+ipcMain.handle('suppliers:get-list', (event, showArchived) => suppliersHandlers.getSuppliersList(event, showArchived));
+ipcMain.handle('suppliers:get-supplier', (event, code) => suppliersHandlers.getSupplier(event, code));
+ipcMain.handle('suppliers:create-supplier', (event, supplierData) => suppliersHandlers.createSupplier(event, supplierData));
+ipcMain.handle('suppliers:update-supplier', (event, supplierData) => suppliersHandlers.updateSupplier(event, supplierData));
+ipcMain.handle('suppliers:delete-supplier', (event, code) => suppliersHandlers.deleteSupplier(event, code));
+ipcMain.handle('suppliers:get-order-history', (event, code) => suppliersHandlers.getSupplierOrderHistory(event, code));
+ipcMain.handle('suppliers:get-payment-strategies', suppliersHandlers.getPaymentStrategies);
+
+// ============================================================
+// IPC Handlers - Contact Groups
+// ============================================================
+
+ipcMain.handle('contact-groups:get-list', () => contactGroupsHandlers.getContactGroups());
+ipcMain.handle('contact-groups:get-group', (event, code) => contactGroupsHandlers.getContactGroup(event, code));
+ipcMain.handle('contact-groups:create-group', (event, groupData) => contactGroupsHandlers.createContactGroup(event, groupData));
+
+// ============================================================
+// IPC Handlers - Supplier Groups
+// ============================================================
+
+ipcMain.handle('supplier-groups:get-list', () => supplierGroupsHandlers.getSupplierGroups());
+ipcMain.handle('supplier-groups:get-group', (event, code) => supplierGroupsHandlers.getSupplierGroup(event, code));
+ipcMain.handle('supplier-groups:create-group', (event, groupData) => supplierGroupsHandlers.createSupplierGroup(event, groupData));
+
+// ============================================================
+// IPC Handlers - ABN Lookup
+// ============================================================
+
+ipcMain.handle('abn-lookup:lookup', (event, abn, guid) => abnLookupHandlers.lookupABN(event, abn, guid));
+ipcMain.handle('abn-lookup:search-by-name', (event, businessName, guid, options) => abnLookupHandlers.searchByBusinessName(event, businessName, guid, options));
+ipcMain.handle('abn-lookup:verify', (event, abn, expectedData, guid) => abnLookupHandlers.verifyABN(event, abn, expectedData, guid));
+
+// ============================================================
+// IPC Handlers - Australia Post Address
+// ============================================================
+
+ipcMain.handle('auspost:search-addresses', (event, query) => ausPostHandlers.searchAddresses(event, query));
+ipcMain.handle('auspost:validate-address', (event, addressData) => ausPostHandlers.validateAddress(event, addressData));
 
 // ============================================================
 // IPC Handlers - Catalogue
@@ -474,5 +566,112 @@ ipcMain.handle('po:get-all-suppliers', purchaseOrdersHandlers.getAllSuppliers);
 ipcMain.handle('po:add-nominated-supplier', (event, costCentre, supplierCode) => purchaseOrdersHandlers.addNominatedSupplier(event, costCentre, supplierCode));
 ipcMain.handle('po:remove-nominated-supplier', (event, costCentre, supplierCode) => purchaseOrdersHandlers.removeNominatedSupplier(event, costCentre, supplierCode));
 ipcMain.handle('po:ensure-status-column', purchaseOrdersHandlers.ensureStatusColumn);
+ipcMain.handle('po:cancel-order', (event, orderNumber, reason) => purchaseOrdersHandlers.cancelOrder(event, orderNumber, reason));
+ipcMain.handle('po:send-cancellation-email', (event, orderNumber, settings) => purchaseOrdersHandlers.sendCancellationEmail(event, orderNumber, settings));
+
+// ============================================================
+// IPC Handlers - Documents
+// ============================================================
+
+ipcMain.handle('documents:get', (event, params) => documentHandlers.getDocuments(event, params));
+ipcMain.handle('documents:add', (event, documentData) => documentHandlers.addDocument(event, documentData));
+ipcMain.handle('documents:update', (event, params) => documentHandlers.updateDocument(event, params));
+ipcMain.handle('documents:delete', (event, params) => documentHandlers.deleteDocument(event, params));
+ipcMain.handle('documents:get-by-type', (event, params) => documentHandlers.getDocumentsByType(event, params));
+ipcMain.handle('documents:search', (event, params) => documentHandlers.searchDocuments(event, params));
+ipcMain.handle('documents:log-communication', (event, commData) => documentHandlers.logCommunication(event, commData));
+ipcMain.handle('documents:check-table-exists', documentHandlers.checkTableExists);
+ipcMain.handle('documents:initialize', documentHandlers.initializeDocuments);
+ipcMain.handle('documents:get-by-job', (event, jobNo) => documentHandlers.getDocumentsByJob(event, jobNo));
+ipcMain.handle('documents:get-by-boq-item', (event, params) => documentHandlers.getDocumentsByBOQItem(event, params));
+ipcMain.handle('documents:get-by-purchase-order', (event, params) => documentHandlers.getDocumentsByPurchaseOrder(event, params));
+ipcMain.handle('documents:link', (event, linkData) => documentHandlers.linkDocument(event, linkData));
+ipcMain.handle('documents:unlink', (event, documentId) => documentHandlers.unlinkDocument(event, documentId));
+
+// ============================================================
+// IPC Handlers - Document Settings (local path config)
+// ============================================================
+
+ipcMain.handle('document-settings:get', () => documentSettingsStore.getSettings());
+ipcMain.handle('document-settings:save', (event, settings) => documentSettingsStore.saveSettings(settings));
+ipcMain.handle('document-settings:get-base-path', () => documentSettingsStore.getBasePath());
+ipcMain.handle('document-settings:set-base-path', (event, basePath) => documentSettingsStore.setBasePath(basePath));
+ipcMain.handle('document-settings:is-configured', () => documentSettingsStore.isConfigured());
+ipcMain.handle('document-settings:build-path', (event, entityType, entityCode, documentType) =>
+  documentSettingsStore.buildRelativePath(entityType, entityCode, documentType));
+ipcMain.handle('document-settings:get-full-path', (event, relativePath) =>
+  documentSettingsStore.buildFullPath(relativePath));
+ipcMain.handle('document-settings:ensure-folder', (event, entityType, entityCode, documentType) =>
+  documentSettingsStore.ensureEntityFolder(entityType, entityCode, documentType));
+ipcMain.handle('document-settings:validate-path', (event, pathToCheck) =>
+  documentSettingsStore.validatePath(pathToCheck));
+ipcMain.handle('document-settings:list-files', (event, dirPath) =>
+  documentSettingsStore.listFiles(dirPath));
+ipcMain.handle('document-settings:reset', () => documentSettingsStore.resetSettings());
+ipcMain.handle('document-settings:browse-folder', async (event, defaultPath) => {
+  const options = {
+    properties: ['openDirectory'],
+    title: 'Select Document Storage Folder'
+  };
+  // Set default path if provided and exists
+  if (defaultPath) {
+    options.defaultPath = defaultPath;
+  }
+  const result = await dialog.showOpenDialog(mainWindow, options);
+  if (result.canceled) return null;
+  return result.filePaths[0];
+});
+
+ipcMain.handle('document-settings:browse-file', async (event, defaultPath, filters) => {
+  const options = {
+    properties: ['openFile'],
+    title: 'Select File'
+  };
+  if (defaultPath) {
+    options.defaultPath = defaultPath;
+  }
+  if (filters) {
+    options.filters = filters;
+  } else {
+    options.filters = [
+      { name: 'All Files', extensions: ['*'] },
+      { name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'] },
+      { name: 'Documents', extensions: ['pdf', 'doc', 'docx', 'xls', 'xlsx'] }
+    ];
+  }
+  const result = await dialog.showOpenDialog(mainWindow, options);
+  if (result.canceled) return null;
+  return result.filePaths[0];
+});
+
+// ============================================================
+// IPC Handlers - Document Cache (SQLite file listing cache)
+// ============================================================
+
+ipcMain.handle('document-cache:initialize', () => documentCache.initializeCache());
+ipcMain.handle('document-cache:scan', (event, basePath, relativePath, entityType, entityCode, documentType) =>
+  documentCache.scanAndCacheDirectory(basePath, relativePath, entityType, entityCode, documentType));
+ipcMain.handle('document-cache:get-files', (event, entityType, entityCode, documentType) =>
+  documentCache.getCachedFiles(entityType, entityCode, documentType));
+ipcMain.handle('document-cache:search', (event, searchTerm, entityType) =>
+  documentCache.searchCachedFiles(searchTerm, entityType));
+ipcMain.handle('document-cache:get-files-in-path', (event, basePath, relativePath) =>
+  documentCache.getFilesInPath(basePath, relativePath));
+ipcMain.handle('document-cache:clear', (event, basePath) => documentCache.clearCache(basePath));
+ipcMain.handle('document-cache:stats', () => documentCache.getCacheStats());
+ipcMain.handle('document-cache:needs-refresh', (event, maxAgeMinutes) => documentCache.needsRefresh(maxAgeMinutes));
+ipcMain.handle('document-cache:list-files', (event, dirPath) => documentCache.listFiles(dirPath));
+ipcMain.handle('document-cache:open-file', (event, filePath) => documentCache.openFile(filePath));
+ipcMain.handle('document-cache:show-in-folder', (event, itemPath) => documentCache.showInFolder(itemPath));
+ipcMain.handle('document-cache:copy-file', (event, sourcePath, destPath) => documentCache.copyFile(sourcePath, destPath));
+ipcMain.handle('document-cache:create-directory', (event, dirPath) => documentCache.createDirectory(dirPath));
+
+// ============================================================
+// IPC Handlers - Schema Migration (for DBA)
+// ============================================================
+
+ipcMain.handle('schema:check-status', () => schemaMigration.checkSchemaStatus());
+ipcMain.handle('schema:generate-migration', () => schemaMigration.generateMigrationScript());
+ipcMain.handle('schema:generate-full', (event, systemDb, jobDb) => schemaMigration.generateFullScript(systemDb, jobDb));
 
 console.log('DBx BOQ - Electron main process initialized');

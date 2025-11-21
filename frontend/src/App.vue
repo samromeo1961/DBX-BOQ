@@ -45,6 +45,18 @@
           </router-link>
         </li>
         <li class="nav-item">
+          <router-link to="/contacts" class="nav-link" active-class="active">
+            <i class="bi bi-person-lines-fill me-1"></i>
+            Contacts
+          </router-link>
+        </li>
+        <li class="nav-item">
+          <router-link to="/suppliers" class="nav-link" active-class="active">
+            <i class="bi bi-truck me-1"></i>
+            Suppliers
+          </router-link>
+        </li>
+        <li class="nav-item">
           <router-link to="/purchase-orders" class="nav-link" active-class="active">
             <i class="bi bi-cart me-1"></i>
             Purchase Orders

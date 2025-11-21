@@ -19,11 +19,13 @@
                 <i class="bi bi-search"></i>
               </span>
               <input
+                ref="searchInputRef"
                 v-model="searchQuery"
                 type="text"
                 class="form-control"
                 placeholder="Search by job number, name, or client..."
-                @input="filterJobs">
+                @input="filterJobs"
+                @keydown.enter="onSearchEnter">
             </div>
           </div>
 
@@ -54,40 +56,22 @@
           </div>
 
           <!-- Jobs List -->
-          <div v-else class="jobs-list">
-            <div
-              v-for="job in filteredJobs"
-              :key="job.JobNo"
-              class="job-item p-3 border-bottom"
-              :class="{ 'selected': selectedJobNo === job.JobNo }"
-              @click="selectJob(job)">
-              <div class="d-flex justify-content-between align-items-start">
-                <div class="flex-fill">
-                  <div class="d-flex align-items-center gap-2 mb-1">
-                    <strong class="job-number">{{ job.JobNo }}</strong>
-                    <span v-if="job.Status" class="badge bg-secondary">{{ job.Status }}</span>
-                  </div>
-                  <div class="job-name text-primary mb-1">{{ job.JobName }}</div>
-                  <div v-if="job.Client" class="job-client text-muted small">
-                    <i class="bi bi-building me-1"></i>
-                    {{ job.Client }}
-                  </div>
-                </div>
-                <div class="job-stats text-end ms-3">
-                  <div class="mb-1">
-                    <span class="badge bg-light text-dark">
-                      {{ job.OrderCount || 0 }} orders
-                    </span>
-                  </div>
-                  <div v-if="job.LoggedCount > 0" class="small">
-                    <span class="text-primary">
-                      <i class="bi bi-check-circle me-1"></i>
-                      {{ job.LoggedCount }} logged
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
+          <div v-else style="height: 60vh;">
+            <ag-grid-vue
+              class="ag-theme-quartz"
+              style="width: 100%; height: 100%;"
+              :columnDefs="columnDefs"
+              :rowData="filteredJobs"
+              :defaultColDef="defaultColDef"
+              :rowSelection="'single'"
+              :rowHeight="40"
+              :pagination="true"
+              :paginationPageSize="20"
+              :paginationPageSizeSelector="[10, 20, 50, 100]"
+              @grid-ready="onGridReady"
+              @selection-changed="onSelectionChanged"
+              @row-double-clicked="onRowDoubleClicked"
+            />
           </div>
         </div>
 
@@ -113,15 +97,21 @@
 
 <script>
 import { ref, computed, onMounted } from 'vue';
+import { AgGridVue } from 'ag-grid-vue3';
 import { useElectronAPI } from '../../composables/useElectronAPI';
 
 export default {
   name: 'JobSelector',
+  components: {
+    AgGridVue
+  },
   emits: ['job-selected', 'close'],
   setup(props, { emit }) {
     const api = useElectronAPI();
 
     // State
+    const searchInputRef = ref(null);
+    const gridApi = ref(null);
     const jobs = ref([]);
     const loading = ref(false);
     const error = ref('');
@@ -141,6 +131,62 @@ export default {
         );
       });
     });
+
+    // AG Grid Configuration
+    const columnDefs = [
+      {
+        headerName: 'Job No',
+        field: 'JobNo',
+        width: 120,
+        pinned: 'left',
+        cellStyle: { fontWeight: 'bold' }
+      },
+      {
+        headerName: 'Job Name',
+        field: 'JobName',
+        flex: 2,
+        cellStyle: { color: '#0d6efd' }
+      },
+      {
+        headerName: 'Client',
+        field: 'Client',
+        flex: 1
+      },
+      {
+        headerName: 'Status',
+        field: 'Status',
+        width: 140,
+        cellRenderer: (params) => {
+          if (!params.value) return '';
+          return `<span class="badge bg-secondary">${params.value}</span>`;
+        }
+      },
+      {
+        headerName: 'Orders',
+        field: 'OrderCount',
+        width: 100,
+        type: 'numericColumn',
+        cellRenderer: (params) => {
+          return `<span class="badge bg-light text-dark">${params.value || 0}</span>`;
+        }
+      },
+      {
+        headerName: 'Logged',
+        field: 'LoggedCount',
+        width: 100,
+        type: 'numericColumn',
+        cellRenderer: (params) => {
+          if (!params.value || params.value === 0) return '';
+          return `<span class="text-primary"><i class="bi bi-check-circle me-1"></i>${params.value}</span>`;
+        }
+      }
+    ];
+
+    const defaultColDef = {
+      sortable: true,
+      filter: true,
+      resizable: true
+    };
 
     // Methods
     const loadJobs = async () => {
@@ -163,6 +209,28 @@ export default {
       }
     };
 
+    const onGridReady = (params) => {
+      gridApi.value = params.api;
+    };
+
+    const onSelectionChanged = () => {
+      if (!gridApi.value) return;
+      const selectedRows = gridApi.value.getSelectedRows();
+      if (selectedRows.length > 0) {
+        selectedJobNo.value = selectedRows[0].JobNo;
+      } else {
+        selectedJobNo.value = '';
+      }
+    };
+
+    const onRowDoubleClicked = (event) => {
+      // Double-click immediately selects and confirms the job
+      const job = event.data;
+      if (job) {
+        emit('job-selected', job);
+      }
+    };
+
     const selectJob = (job) => {
       selectedJobNo.value = job.JobNo;
     };
@@ -182,23 +250,52 @@ export default {
       // Triggered on search input - filteredJobs computed property handles the filtering
     };
 
+    const onSearchEnter = () => {
+      // If search filtered down to exactly one job, select it automatically
+      if (filteredJobs.value.length === 1) {
+        const job = filteredJobs.value[0];
+        emit('job-selected', job);
+      }
+      // If multiple jobs, select the first one
+      else if (filteredJobs.value.length > 1 && gridApi.value) {
+        gridApi.value.getDisplayedRowAtIndex(0).setSelected(true);
+        // Auto-scroll to first row
+        gridApi.value.ensureIndexVisible(0);
+      }
+    };
+
     // Lifecycle
     onMounted(() => {
       loadJobs();
+
+      // Auto-focus search field for quick searching
+      setTimeout(() => {
+        if (searchInputRef.value) {
+          searchInputRef.value.focus();
+        }
+      }, 100);
     });
 
     return {
+      searchInputRef,
+      gridApi,
       jobs,
       loading,
       error,
       searchQuery,
       selectedJobNo,
       filteredJobs,
+      columnDefs,
+      defaultColDef,
       loadJobs,
+      onGridReady,
+      onSelectionChanged,
+      onRowDoubleClicked,
       selectJob,
       confirmSelection,
       closeModal,
-      filterJobs
+      filterJobs,
+      onSearchEnter
     };
   }
 };
@@ -207,42 +304,5 @@ export default {
 <style scoped>
 .modal {
   background: rgba(0, 0, 0, 0.5);
-}
-
-.jobs-list {
-  max-height: 60vh;
-  overflow-y: auto;
-}
-
-.job-item {
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.job-item:hover {
-  background-color: #f8f9fa;
-}
-
-.job-item.selected {
-  background-color: #e7f3ff;
-  border-left: 4px solid #0d6efd;
-}
-
-.job-number {
-  font-size: 1.1rem;
-  color: #212529;
-}
-
-.job-name {
-  font-size: 1rem;
-  font-weight: 500;
-}
-
-.job-client {
-  font-size: 0.875rem;
-}
-
-.job-stats {
-  min-width: 100px;
 }
 </style>

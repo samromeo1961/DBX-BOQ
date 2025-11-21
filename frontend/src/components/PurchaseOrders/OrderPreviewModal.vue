@@ -3,14 +3,14 @@
     <div class="modal-dialog modal-fullscreen">
       <div class="modal-content">
         <!-- Header -->
-        <div class="modal-header">
-          <h5 class="modal-title">
+        <div class="modal-header compact-header">
+          <h6 class="modal-title mb-0">
             <i class="bi bi-eye me-2"></i>
             Order Preview: {{ currentOrderNumber }}
             <span v-if="orderNumbers.length > 1" class="badge bg-secondary ms-2">
               {{ currentIndex + 1 }} of {{ orderNumbers.length }}
             </span>
-          </h5>
+          </h6>
           <div class="d-flex align-items-center gap-2">
             <!-- Navigation for multiple orders -->
             <div v-if="orderNumbers.length > 1" class="btn-group me-3">
@@ -34,8 +34,8 @@
         </div>
 
         <!-- Settings Bar -->
-        <div class="settings-bar p-3 border-bottom bg-light">
-          <div class="row g-3">
+        <div class="settings-bar p-2 border-bottom bg-light">
+          <div class="row g-2">
             <div class="col-md-3">
               <label class="form-label small">Template</label>
               <select v-model="settings.template" @change="saveTemplatePreference" class="form-select form-select-sm">
@@ -221,13 +221,16 @@ export default {
     const print = async () => {
       loading.value = true;
       try {
-        const result = await api.poPrint.printOrder(
-          currentOrderNumber.value,
+        // Use batch print with single order
+        const result = await api.purchaseOrders.batchPrint(
+          [currentOrderNumber.value],
           getPlainSettings()
         );
 
         if (!result.success) {
           alert('Failed to print: ' + (result.message || 'Unknown error'));
+        } else if (result.failed > 0) {
+          alert('Failed to print: ' + result.results[0].error);
         }
         // If successful, print dialog was already shown by Electron
       } catch (err) {
@@ -241,17 +244,22 @@ export default {
     const savePDF = async () => {
       loading.value = true;
       try {
-        const result = await api.poPrint.saveAsPDF(
-          currentOrderNumber.value,
+        // Use batch save PDF with single order
+        const result = await api.purchaseOrders.batchSavePDF(
+          [currentOrderNumber.value],
           getPlainSettings()
         );
 
-        if (result.success && !result.cancelled) {
-          alert('PDF saved successfully to: ' + result.filePath);
-        } else if (!result.cancelled) {
+        if (result.cancelled) {
+          loading.value = false;
+          return;
+        }
+
+        if (result.success && result.saved > 0) {
+          alert('PDF saved successfully to: ' + result.saveDir);
+        } else {
           alert('Failed to save PDF: ' + (result.message || 'Unknown error'));
         }
-        // If cancelled, do nothing (user closed the save dialog)
       } catch (err) {
         console.error('Error saving PDF:', err);
         alert('Error saving PDF: ' + err.message);
@@ -260,40 +268,98 @@ export default {
       }
     };
 
-    const showEmailDialog = () => {
-      // TODO: Implement email (Phase 5)
-      alert('Email functionality coming in Phase 5!');
+    const showEmailDialog = async () => {
+      loading.value = true;
+      try {
+        // Check if email is configured
+        const isConfigured = await api.emailSettings.isConfigured();
+        if (!isConfigured) {
+          alert(
+            'Email Configuration Required:\n\n' +
+            'Please configure your email settings in Settings > Email / SMTP before using this feature.'
+          );
+          loading.value = false;
+          return;
+        }
+
+        // Get email settings
+        const emailSettings = await api.emailSettings.get();
+
+        // Get order details for supplier email
+        const orderDetails = await api.purchaseOrders.getOrderDetails(currentOrderNumber.value);
+        if (!orderDetails.success) {
+          alert('Failed to get order details');
+          loading.value = false;
+          return;
+        }
+
+        const order = orderDetails.order;
+
+        // Check supplier email (unless in test mode)
+        if (!emailSettings.testMode && !order.SupplierEmail) {
+          alert(
+            `Cannot email order ${currentOrderNumber.value}:\n\n` +
+            'The supplier has no email address configured.'
+          );
+          loading.value = false;
+          return;
+        }
+
+        // Show confirmation
+        let confirmMessage = `Email purchase order ${currentOrderNumber.value}?\n\n`;
+        if (emailSettings.testMode) {
+          confirmMessage += `⚠️ TEST MODE ENABLED - Email will be sent to: ${emailSettings.testEmail}`;
+        } else {
+          confirmMessage += `To: ${order.SupplierName} (${order.SupplierEmail})`;
+        }
+
+        const confirmed = confirm(confirmMessage);
+        if (!confirmed) {
+          loading.value = false;
+          return;
+        }
+
+        // Send email using batch email with current order
+        const settings = { emailSettings: emailSettings };
+        const result = await api.purchaseOrders.batchEmail([currentOrderNumber.value], settings);
+
+        if (result.success) {
+          let message = 'Email sent successfully!';
+          if (emailSettings.testMode) {
+            message += `\n\n⚠️ TEST MODE: Email was sent to ${emailSettings.testEmail}`;
+          }
+          alert(message);
+        } else {
+          alert('Failed to send email: ' + result.message);
+        }
+      } catch (error) {
+        console.error('Error sending email:', error);
+        alert('Error sending email: ' + error.message);
+      } finally {
+        loading.value = false;
+      }
     };
 
     const loadTemplates = async () => {
-      try {
-        const result = await api.poTemplates.getAll();
-        if (result.success) {
-          templates.value = result.templates;
-        }
-      } catch (err) {
-        console.error('Error loading templates:', err);
-      }
+      // Placeholder: Template management not yet implemented
+      // Set default templates
+      templates.value = [
+        { id: 'classic-po', name: 'Classic PO' },
+        { id: 'modern-po', name: 'Modern PO' },
+        { id: 'detailed-po', name: 'Detailed PO' }
+      ];
     };
 
     const loadSavedTemplate = async () => {
-      try {
-        const result = await api.preferences.get('defaultPOTemplate');
-        if (result.success && result.value) {
-          settings.value.template = result.value;
-        }
-      } catch (err) {
-        console.error('Error loading saved template:', err);
-      }
+      // Placeholder: User preferences not yet implemented
+      // Use default template
+      settings.value.template = 'classic-po';
     };
 
     const saveTemplatePreference = async () => {
-      try {
-        await api.preferences.set('defaultPOTemplate', settings.value.template);
-        refreshPreview();
-      } catch (err) {
-        console.error('Error saving template preference:', err);
-      }
+      // Placeholder: Save template preference
+      // For now, just refresh the preview
+      refreshPreview();
     };
 
     const closeModal = () => {
@@ -359,12 +425,38 @@ export default {
   pointer-events: none;
 }
 
+/* Compact header with reduced padding */
+.compact-header {
+  padding: 0.5rem 1rem !important;
+}
+
+.compact-header .modal-title {
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+/* Compact settings bar */
 .settings-bar {
   background-color: #f8f9fa !important;
 }
 
+.settings-bar .form-label {
+  margin-bottom: 0.25rem;
+}
+
+/* Reduce modal body padding */
+.modal-body {
+  padding: 0 !important;
+}
+
+/* Compact footer */
+.modal-footer {
+  padding: 0.5rem 1rem !important;
+  gap: 0.5rem;
+}
+
 .preview-loading {
-  height: 70vh;
+  height: 75vh;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -372,18 +464,20 @@ export default {
 }
 
 .preview-container {
-  height: 70vh;
+  max-height: 75vh;
   overflow-y: auto;
   background: #e9ecef;
-  padding: 20px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
 }
 
 .preview-frame {
   background: white;
-  min-height: 100%;
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
   margin: 0 auto;
   max-width: 210mm; /* A4 width */
+  flex-shrink: 0;
 }
 
 .spin {

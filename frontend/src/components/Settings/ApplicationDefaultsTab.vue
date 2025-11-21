@@ -50,21 +50,9 @@
               placeholder="C:\Path\To\Documents"
             />
             <small class="form-text text-muted">
-              Default location for storing documents and exports
-            </small>
-          </div>
-
-          <!-- Purchase Order Folder -->
-          <div class="mb-3">
-            <label class="form-label">Purchase Order Folder</label>
-            <input
-              v-model="formData.poFolder"
-              type="text"
-              class="form-control"
-              placeholder="C:\Path\To\PurchaseOrders"
-            />
-            <small class="form-text text-muted">
-              Location where purchase order PDFs are saved
+              Base location for storing documents and exports.<br>
+              Purchase Orders will be saved to: <strong>{{ formData.defaultDocFolder || '[path]' }}\POS</strong><br>
+              General documents will be saved to: <strong>{{ formData.defaultDocFolder || '[path]' }}\DOCS</strong>
             </small>
           </div>
 
@@ -165,7 +153,6 @@ export default {
       defaultPriceLevel: 1,
       defaultDocFolder: '',
       currencySymbol: '$',
-      poFolder: '',
       decimalPlaces: 2,
       dateFormat: 'DD/MM/YYYY',
       showArchivedByDefault: false,
@@ -188,7 +175,18 @@ export default {
     async function saveDefaults() {
       saving.value = true;
       try {
-        await api.settings.updateApplicationDefaults(formData.value);
+        // Convert reactive object to plain object for IPC
+        const plainDefaults = {
+          defaultPriceLevel: formData.value.defaultPriceLevel,
+          defaultDocFolder: formData.value.defaultDocFolder,
+          currencySymbol: formData.value.currencySymbol,
+          decimalPlaces: formData.value.decimalPlaces,
+          dateFormat: formData.value.dateFormat,
+          showArchivedByDefault: formData.value.showArchivedByDefault,
+          defaultTab: formData.value.defaultTab
+        };
+
+        await api.settings.updateApplicationDefaults(plainDefaults);
         alert('Application defaults saved successfully');
       } catch (error) {
         console.error('Error saving application defaults:', error);

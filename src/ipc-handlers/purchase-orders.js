@@ -1585,6 +1585,7 @@ async function batchSavePDF(event, orderNumbers, settings) {
     let savedCount = 0;
     let failedCount = 0;
     const errors = [];
+    const savedFiles = [];
 
     // Save each PDF
     for (const pdfResult of pdfResults.results) {
@@ -1593,6 +1594,12 @@ async function batchSavePDF(event, orderNumbers, settings) {
           const filePath = path.join(saveDir, pdfResult.filename);
           fs.writeFileSync(filePath, pdfResult.pdf);
           savedCount++;
+          // Track saved file for auto-linking
+          savedFiles.push({
+            orderNumber: pdfResult.orderNumber,
+            fileName: pdfResult.filename,
+            filePath: filePath
+          });
         } catch (err) {
           console.error(`Failed to save ${pdfResult.filename}:`, err);
           failedCount++;
@@ -1619,7 +1626,8 @@ async function batchSavePDF(event, orderNumbers, settings) {
       total: orderNumbers.length,
       saved: savedCount,
       failed: failedCount,
-      errors
+      errors,
+      savedFiles
     };
   } catch (error) {
     console.error('Error batch saving PDFs:', error);

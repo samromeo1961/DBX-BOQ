@@ -202,20 +202,57 @@
                 </div>
               </div>
 
-              <!-- Email and Phone -->
+              <!-- Contact Selector -->
               <div class="row mb-3">
-                <div class="col-md-6">
+                <div class="col-md-12">
+                  <label class="form-label">
+                    Link to Contact
+                    <small class="text-muted">(Optional - auto-fills phone/mobile/email)</small>
+                  </label>
+                  <SearchableSelect
+                    v-model="formData.contactCode"
+                    :options="contacts"
+                    label-key="Name"
+                    value-key="Code"
+                    placeholder="Select contact..."
+                    :show-clear-option="true"
+                    clear-label="No contact link"
+                  />
+                </div>
+              </div>
+
+              <!-- Email, Phone, and Mobile -->
+              <div class="row mb-3">
+                <div class="col-md-4">
                   <label class="form-label">Email</label>
                   <input v-model="formData.email" type="email" class="form-control" />
                 </div>
-                <div class="col-md-6">
-                  <label class="form-label">Phone Number</label>
+                <div class="col-md-4">
+                  <label class="form-label">
+                    Phone
+                    <small v-if="formData.contactCode" class="text-muted">(from contact)</small>
+                  </label>
                   <input
                     v-model="formData.phone"
                     type="tel"
                     class="form-control"
-                    maxlength="20"
-                    placeholder="e.g., 0412 345 678"
+                    :readonly="!!formData.contactCode"
+                    :class="{ 'bg-light': !!formData.contactCode }"
+                    placeholder="From contact"
+                  />
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label">
+                    Mobile
+                    <small v-if="formData.contactCode" class="text-muted">(from contact)</small>
+                  </label>
+                  <input
+                    v-model="formData.mobile"
+                    type="tel"
+                    class="form-control"
+                    :readonly="!!formData.contactCode"
+                    :class="{ 'bg-light': !!formData.contactCode }"
+                    placeholder="From contact"
                   />
                 </div>
               </div>
@@ -397,11 +434,15 @@
 </template>
 
 <script>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, watch } from 'vue';
 import { useElectronAPI } from '@/composables/useElectronAPI';
+import SearchableSelect from '@/components/common/SearchableSelect.vue';
 
 export default {
   name: 'UsersTab',
+  components: {
+    SearchableSelect
+  },
   emits: ['reload'],
   setup(props, { emit }) {
     const api = useElectronAPI();
@@ -418,11 +459,16 @@ export default {
     const showPasswordConfirm = ref(false);
     const passwordConfirmation = ref('');
 
+    const contacts = ref([]);
+
     const formData = ref({
       username: '',
       fullName: '',
       email: '',
+      contactCode: '',
+      contactName: '',
       phone: '',
+      mobile: '',
       password: '',
       securityLevel: 2,
       active: true,
@@ -458,6 +504,18 @@ export default {
       }
     }
 
+    async function loadContacts() {
+      try {
+        // Load contacts from Group 1 (individuals/contacts)
+        const result = await api.contacts.getList(1);
+        contacts.value = result.data || [];
+        console.log('Loaded contacts:', contacts.value.length);
+      } catch (error) {
+        console.error('Error loading contacts:', error);
+        contacts.value = [];
+      }
+    }
+
     function getSecurityLevelLabel(level) {
       const labels = {
         0: 'None',
@@ -483,7 +541,10 @@ export default {
         username: '',
         fullName: '',
         email: '',
+        contactCode: '',
+        contactName: '',
         phone: '',
+        mobile: '',
         password: '',
         securityLevel: 2,
         active: true,
@@ -515,7 +576,10 @@ export default {
         username: user.username,
         fullName: user.fullName || '',
         email: user.email || '',
+        contactCode: user.contactCode || '',
+        contactName: user.contactName || '',
         phone: user.phone || '',
+        mobile: user.mobile || '',
         password: '', // Don't show existing password
         securityLevel: user.securityLevel || 2,
         active: user.active || false,
@@ -604,12 +668,32 @@ export default {
       }
     }
 
+    // Watch for contact selection and populate phone/mobile
+    watch(() => formData.value.contactCode, (newContactCode) => {
+      if (newContactCode) {
+        const selectedContact = contacts.value.find(c => c.Code === newContactCode);
+        if (selectedContact) {
+          formData.value.contactName = selectedContact.Name || '';
+          formData.value.phone = selectedContact.Phone || '';
+          formData.value.mobile = selectedContact.Mobile || '';
+          formData.value.email = selectedContact.Email || formData.value.email;
+        }
+      } else {
+        // Clear contact-related fields when contact is cleared
+        formData.value.contactName = '';
+        formData.value.phone = '';
+        formData.value.mobile = '';
+      }
+    });
+
     onMounted(() => {
       loadUsers();
+      loadContacts();
     });
 
     return {
       users,
+      contacts,
       currentUserId,
       loading,
       saving,

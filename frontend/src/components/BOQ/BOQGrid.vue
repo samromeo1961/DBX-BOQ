@@ -14,6 +14,15 @@
           Assign Supplier
         </button>
         <button
+          v-if="selectedRows.length === 1"
+          class="btn btn-sm btn-outline-secondary"
+          @click="showDocumentsModal = true"
+          title="Link documents to item"
+        >
+          <i class="bi bi-paperclip"></i>
+          Documents
+        </button>
+        <button
           v-if="selectedRows.length > 0"
           class="btn btn-sm btn-danger"
           @click="deleteSelected"
@@ -37,6 +46,7 @@
       :getRowStyle="getRowStyle"
       @grid-ready="onGridReady"
       @cell-value-changed="onCellValueChanged"
+      @cell-double-clicked="onCellDoubleClicked"
       @selection-changed="onSelectionChanged"
       style="height: calc(100% - 40px);"
     />
@@ -58,19 +68,46 @@
       @close="showAssignSupplierModal = false"
       @assigned="onSupplierAssigned"
     />
+
+    <!-- Documents Modal -->
+    <div v-if="showDocumentsModal && selectedRows.length === 1" class="modal show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.5);">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">
+              <i class="bi bi-paperclip me-2"></i>
+              Item Documents - {{ selectedRows[0]?.ItemCode }}
+            </h5>
+            <button type="button" class="btn-close" @click="showDocumentsModal = false"></button>
+          </div>
+          <div class="modal-body">
+            <DocumentLinkPanel
+              entityType="BOQItem"
+              :entityCode="selectedEntityCode"
+              :entityLabel="selectedRows[0]?.Description || selectedRows[0]?.ItemCode"
+            />
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" @click="showDocumentsModal = false">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script>
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue';
 import { AgGridVue } from 'ag-grid-vue3';
 import AssignSupplierModal from './AssignSupplierModal.vue';
+import DocumentLinkPanel from '@/components/Documents/DocumentLinkPanel.vue';
 
 export default {
   name: 'BOQGrid',
   components: {
     AgGridVue,
-    AssignSupplierModal
+    AssignSupplierModal,
+    DocumentLinkPanel
   },
   props: {
     billItems: {
@@ -88,11 +125,19 @@ export default {
       default: () => []
     }
   },
-  emits: ['cellValueChanged', 'deleteItems', 'refresh'],
+  emits: ['cellValueChanged', 'deleteItems', 'refresh', 'openWorkupModal'],
   setup(props, { emit }) {
     const gridApi = ref(null);
     const selectedRows = ref([]);
     const showAssignSupplierModal = ref(false);
+    const showDocumentsModal = ref(false);
+
+    // Computed entity code for document linking (BOQ item composite key)
+    const selectedEntityCode = computed(() => {
+      if (selectedRows.value.length !== 1) return '';
+      const item = selectedRows.value[0];
+      return `${props.jobNo}|${props.costCentre}|${item.BLoad || ''}|${item.LineNumber || ''}`;
+    });
 
     const columnDefs = ref([
       {
@@ -114,7 +159,26 @@ export default {
         field: 'Description',
         headerName: 'Description',
         flex: 1,
-        editable: false,
+        editable: (params) => {
+          // Only adhoc items (blank description) can have description edited
+          if (!params.data) return false;
+          const desc = params.data.Description;
+          return desc !== null && desc !== undefined && desc.trim() === '';
+        },
+        cellRenderer: (params) => {
+          // Check if this is truly an adhoc item (has description field but it's empty)
+          const hasField = params.data && params.data.hasOwnProperty('Description');
+          const desc = params.value;
+          const isAdhoc = hasField && desc !== null && desc !== undefined && desc.trim() === '';
+
+          if (isAdhoc) {
+            return `<div style="display: flex; align-items: center; gap: 5px;">
+              <i class="bi bi-file-text text-warning" title="Adhoc item - description from workup"></i>
+              <span style="font-style: italic; color: #6c757d;">(adhoc - add workup to set description)</span>
+            </div>`;
+          }
+          return desc || '';
+        },
         minWidth: 200
       },
       {
@@ -170,13 +234,16 @@ export default {
         field: 'Workup',
         headerName: 'Workup/Notes',
         width: 200,
-        editable: true,
-        cellEditor: 'agLargeTextCellEditor',
-        cellEditorParams: {
-          maxLength: 1000,
-          rows: 3,
-          cols: 50
-        }
+        editable: false, // Disable inline editing, use modal instead
+        cellRenderer: (params) => {
+          const workup = params.value || '';
+          const preview = workup.length > 30 ? workup.substring(0, 30) + '...' : workup;
+          return `<div class="workup-cell" style="cursor: pointer; display: flex; align-items: center; gap: 5px;">
+            <i class="bi bi-pencil-square text-primary"></i>
+            <span style="flex: 1;">${preview || '(click to add)'}</span>
+          </div>`;
+        },
+        tooltipValueGetter: (params) => params.value || 'Double-click to edit workup'
       },
       {
         field: 'CostCentre',
@@ -240,6 +307,13 @@ export default {
       emit('cellValueChanged', event);
     }
 
+    function onCellDoubleClicked(event) {
+      // Open workup modal when Workup cell is double-clicked
+      if (event.colDef.field === 'Workup') {
+        emit('openWorkupModal', event.data);
+      }
+    }
+
     function onSelectionChanged() {
       if (gridApi.value) {
         selectedRows.value = gridApi.value.getSelectedRows();
@@ -265,6 +339,25 @@ export default {
           color: '#ff8c00' // Orange color for archived items
         };
       }
+
+      // Apply subtle background color to adhoc items (blank description)
+      // Only if Description field exists and is explicitly empty/whitespace
+      // Don't apply if Description is undefined (data not loaded yet)
+      if (params.data &&
+          params.data.hasOwnProperty('Description') &&
+          params.data.Description !== null &&
+          params.data.Description !== undefined &&
+          typeof params.data.Description === 'string' &&
+          params.data.Description.trim() === '') {
+
+        // Debug logging
+        console.log('Adhoc item detected:', params.data.ItemCode, 'Description:', params.data.Description);
+
+        return {
+          backgroundColor: '#fffbf0' // Very light yellow background for adhoc items
+        };
+      }
+
       return null;
     }
 
@@ -272,10 +365,13 @@ export default {
       gridApi,
       selectedRows,
       showAssignSupplierModal,
+      showDocumentsModal,
+      selectedEntityCode,
       columnDefs,
       defaultColDef,
       onGridReady,
       onCellValueChanged,
+      onCellDoubleClicked,
       onSelectionChanged,
       deleteSelected,
       onSupplierAssigned,

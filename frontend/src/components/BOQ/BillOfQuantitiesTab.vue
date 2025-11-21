@@ -20,6 +20,7 @@
         <CostCentrePanel
           :selectedJob="selectedJob"
           v-model:selectedCostCentre="selectedCostCentre"
+          :showAllOption="true"
         />
 
         <!-- BOQ Grid -->
@@ -33,6 +34,7 @@
             @cellValueChanged="onCellValueChanged"
             @deleteItems="onDeleteItems"
             @refresh="loadBill"
+            @openWorkupModal="openWorkupModal"
           />
         </div>
       </div>
@@ -75,6 +77,14 @@
         </div>
       </div>
     </div>
+
+    <!-- Workup Modal -->
+    <WorkupModal
+      :show="showWorkupModal"
+      :itemData="selectedWorkupItem"
+      @close="closeWorkupModal"
+      @save="saveWorkup"
+    />
   </div>
 </template>
 
@@ -85,6 +95,7 @@ import BOQToolbar from './BOQToolbar.vue';
 import BOQGrid from './BOQGrid.vue';
 import BOQCatalogueSearch from './BOQCatalogueSearch.vue';
 import CostCentrePanel from './CostCentrePanel.vue';
+import WorkupModal from './WorkupModal.vue';
 
 export default {
   name: 'BillOfQuantitiesTab',
@@ -92,7 +103,8 @@ export default {
     BOQToolbar,
     BOQGrid,
     BOQCatalogueSearch,
-    CostCentrePanel
+    CostCentrePanel,
+    WorkupModal
   },
   setup() {
     const api = useElectronAPI();
@@ -108,6 +120,8 @@ export default {
     const catalogueSearchVisible = ref(false);
     const catalogueLayoutHorizontal = ref(true); // true = horizontal (bottom), false = vertical (right)
     const availableLoads = ref([]);
+    const showWorkupModal = ref(false);
+    const selectedWorkupItem = ref({});
 
     // Computed
     const billTotal = computed(() => {
@@ -164,6 +178,38 @@ export default {
         itemCode: data.ItemCode,
         newValue: data[colDef.field]
       });
+
+      // Check for zero price and prompt for manual entry if option enabled
+      if (colDef.field === 'UnitPrice' && data.UnitPrice === 0) {
+        try {
+          const optionsResult = await api.boqOptions.get();
+          if (optionsResult.success && optionsResult.options?.newItems?.zeroToManual) {
+            const manualPrice = prompt(
+              `The price for "${data.Description || data.ItemCode}" is $0.00.\n\n` +
+              `Please enter a manual price:`,
+              '0.00'
+            );
+
+            if (manualPrice !== null) {
+              const parsedPrice = parseFloat(manualPrice);
+              if (!isNaN(parsedPrice) && parsedPrice >= 0) {
+                data.UnitPrice = parsedPrice;
+                console.log(`✓ Manual price set to $${parsedPrice.toFixed(2)}`);
+              } else {
+                alert('Invalid price entered. Price will remain $0.00');
+              }
+            } else {
+              // User cancelled - reload to revert
+              loading.value = false;
+              await loadBill();
+              return;
+            }
+          }
+        } catch (error) {
+          console.error('Error checking BOQ options:', error);
+          // Continue with update even if options check fails
+        }
+      }
 
       loading.value = true;
       try {
@@ -335,6 +381,86 @@ export default {
       }
     });
 
+    // Workup Modal Handlers
+    function openWorkupModal(itemData) {
+      selectedWorkupItem.value = { ...itemData };
+      showWorkupModal.value = true;
+    }
+
+    function closeWorkupModal() {
+      showWorkupModal.value = false;
+      selectedWorkupItem.value = {};
+    }
+
+    async function saveWorkup({ workup, firstLine, isAdhocItem }) {
+      loading.value = true;
+      try {
+        const item = selectedWorkupItem.value;
+
+        // Update workup in database
+        const updateData = {
+          JobNo: item.JobNo,
+          CostCentre: item.CostCentre,
+          BLoad: item.BLoad,
+          LineNumber: item.LineNumber,
+          Quantity: item.Quantity,
+          UnitPrice: item.UnitPrice,
+          XDescription: workup
+        };
+
+        const result = await api.boq.updateItem(updateData);
+
+        if (!result.success) {
+          console.error('Failed to update workup:', result.message);
+          alert('Failed to save workup: ' + result.message);
+          loading.value = false;
+          return;
+        }
+
+        // For adhoc items, update the catalogue description from first line
+        if (isAdhocItem && firstLine && firstLine.trim()) {
+          try {
+            // First, get the full catalogue item to preserve all fields
+            const catalogueItemResult = await api.catalogue.getItem(item.ItemCode, selectedPriceLevel.value);
+
+            if (catalogueItemResult.success && catalogueItemResult.data) {
+              const fullItem = catalogueItemResult.data;
+
+              // Update with all fields preserved, only changing Description
+              const catalogueResult = await api.catalogue.updateItem({
+                PriceCode: item.ItemCode,
+                Description: firstLine.trim(),
+                CostCentre: fullItem.CostCentre,
+                PerCode: fullItem.PerCode,
+                Archived: fullItem.Archived || 0
+              });
+
+              if (catalogueResult.success) {
+                console.log(`✓ Updated catalogue description for ${item.ItemCode}: "${firstLine.trim()}"`);
+              } else {
+                console.warn('Failed to update catalogue description:', catalogueResult.message);
+              }
+            } else {
+              console.warn('Could not fetch catalogue item to update:', catalogueItemResult.message);
+            }
+          } catch (error) {
+            console.error('Error updating catalogue description:', error);
+            // Don't fail the whole save if catalogue update fails
+          }
+        }
+
+        // Close modal and reload
+        closeWorkupModal();
+        await loadBill();
+        console.log('✅ Workup saved successfully');
+      } catch (error) {
+        console.error('Error saving workup:', error);
+        alert('Error saving workup: ' + error.message);
+      } finally {
+        loading.value = false;
+      }
+    }
+
     return {
       selectedJob,
       selectedPriceLevel,
@@ -347,10 +473,15 @@ export default {
       catalogueLayoutHorizontal,
       availableLoads,
       billTotal,
+      showWorkupModal,
+      selectedWorkupItem,
       loadBill,
       onCellValueChanged,
       onAddItems,
-      onDeleteItems
+      onDeleteItems,
+      openWorkupModal,
+      closeWorkupModal,
+      saveWorkup
     };
   }
 };
