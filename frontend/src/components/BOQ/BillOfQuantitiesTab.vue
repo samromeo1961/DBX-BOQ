@@ -171,12 +171,13 @@ export default {
     }
 
     async function onCellValueChanged(event) {
-      const { data, colDef } = event;
+      const { data, colDef, oldValue, newValue } = event;
 
       console.log('✏️ Cell value changed:', {
         field: colDef.field,
         itemCode: data.ItemCode,
-        newValue: data[colDef.field]
+        oldValue: oldValue,
+        newValue: newValue
       });
 
       // Check for zero price and prompt for manual entry if option enabled
@@ -216,12 +217,18 @@ export default {
         const updateData = {
           JobNo: data.JobNo,
           CostCentre: data.CostCentre,
-          BLoad: data.BLoad,
+          BLoad: colDef.field === 'BLoad' ? oldValue : data.BLoad,
           LineNumber: data.LineNumber,
           Quantity: data.Quantity,
           UnitPrice: data.UnitPrice,
           XDescription: data.Workup
         };
+
+        // Special handling for Load changes (BLoad is part of primary key)
+        if (colDef.field === 'BLoad' && oldValue !== newValue) {
+          updateData.newBLoad = parseInt(newValue);
+          console.log(`🔄 Moving item from Load ${oldValue} to Load ${newValue}`);
+        }
 
         console.log('Updating item with:', updateData);
 

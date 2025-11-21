@@ -267,8 +267,12 @@ export default {
         field: 'BLoad',
         headerName: 'Load',
         width: 80,
-        editable: false,
-        type: 'numericColumn'
+        editable: true,
+        type: 'numericColumn',
+        cellEditor: 'agSelectCellEditor',
+        cellEditorParams: {
+          values: props.availableLoads
+        }
       },
       {
         field: 'SupplierName',
