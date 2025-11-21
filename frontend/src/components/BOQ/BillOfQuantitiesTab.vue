@@ -318,8 +318,13 @@ export default {
 
     // Watchers
     // Note: Not watching selectedLoad since we display ALL loads in the grid
+    // Skip initial watch during mount - we'll load manually after all values are set
+    let isInitialized = false;
     watch([selectedJob, selectedCostCentre], () => {
-      loadBill();
+      if (isInitialized) {
+        console.log('🔄 Watch triggered - loading bill for:', selectedJob.value, selectedCostCentre.value);
+        loadBill();
+      }
     });
 
     // Save catalogue preferences
@@ -378,6 +383,13 @@ export default {
       } else {
         // Default to 10 loads
         availableLoads.value = Array.from({ length: 10 }, (_, i) => i + 1);
+      }
+
+      // Mark as initialized and load initial bill data
+      isInitialized = true;
+      if (selectedJob.value) {
+        console.log('🚀 Initial load with job:', selectedJob.value, 'costCentre:', selectedCostCentre.value);
+        loadBill();
       }
     });
 
