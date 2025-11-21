@@ -460,12 +460,15 @@ export default {
         const isEdit = editingItem.value && editingItem.value.PriceCode;
         let result;
 
+        // Convert reactive proxy to plain object for IPC serialization
+        const plainData = { ...itemData };
+
         if (isEdit) {
           // Update existing item
-          result = await api.catalogue.updateItem(itemData);
+          result = await api.catalogue.updateItem(plainData);
         } else {
           // Add new item
-          result = await api.catalogue.addItem(itemData);
+          result = await api.catalogue.addItem(plainData);
         }
 
         if (result.success) {

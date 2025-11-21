@@ -199,14 +199,13 @@ export default {
 
       // Handle Description field edit for adhoc items
       // Description edits should save to XDescription (workup) as the first line
-      // Check oldValue since data.Description is already updated by AG Grid
+      // Check data.Description (catalogue description) to determine if adhoc
       if (colDef.field === 'Description') {
-        const wasAdhoc = oldValue === null || oldValue === undefined || (typeof oldValue === 'string' && oldValue.trim() === '');
-        if (wasAdhoc) {
+        const catalogueDesc = data.Description;
+        const isAdhoc = catalogueDesc === null || catalogueDesc === undefined || (typeof catalogueDesc === 'string' && catalogueDesc.trim() === '');
+        if (isAdhoc) {
           // Set the new value as the workup (it will become the first line / description)
           data.Workup = newValue;
-          // Reset Description to maintain adhoc state (description comes from workup)
-          data.Description = null;
           console.log(`📝 Adhoc description set to workup: ${newValue}`);
         }
       }

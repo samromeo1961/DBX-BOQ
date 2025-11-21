@@ -166,6 +166,18 @@ export default {
           // Adhoc = null, undefined, or empty/whitespace string
           return desc === null || desc === undefined || (typeof desc === 'string' && desc.trim() === '');
         },
+        // For adhoc items, show workup first line as editable value
+        valueGetter: (params) => {
+          if (!params.data) return '';
+          const desc = params.data.Description;
+          const isAdhoc = desc === null || desc === undefined || (typeof desc === 'string' && desc.trim() === '');
+          if (isAdhoc) {
+            // Return first line of workup for editing
+            const workup = params.data.Workup || '';
+            return workup.split('\n')[0]?.trim() || '';
+          }
+          return desc || '';
+        },
         cellRenderer: (params) => {
           // Check if this is an adhoc item (null, undefined, or empty description)
           if (!params.data) return '';

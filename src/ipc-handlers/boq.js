@@ -274,7 +274,7 @@ async function updateItem(event, billItem) {
       const selectResult = await pool.request()
         .input('jobNo', billItem.JobNo)
         .input('costCentre', billItem.CostCentre)
-        .input('bLoad', billItem.BLoad)
+        .input('bLoad', currentBLoad)
         .input('lineNumber', billItem.LineNumber)
         .query(selectQuery);
 
@@ -296,7 +296,7 @@ async function updateItem(event, billItem) {
       await pool.request()
         .input('jobNo', billItem.JobNo)
         .input('costCentre', billItem.CostCentre)
-        .input('bLoad', billItem.BLoad)
+        .input('bLoad', currentBLoad)
         .input('lineNumber', billItem.LineNumber)
         .query(deleteQuery);
 
@@ -341,7 +341,7 @@ async function updateItem(event, billItem) {
     const request = pool.request()
       .input('jobNo', billItem.JobNo)
       .input('costCentre', billItem.CostCentre)
-      .input('bLoad', billItem.BLoad)
+      .input('bLoad', currentBLoad)
       .input('lineNumber', billItem.LineNumber);
 
     if (billItem.Quantity !== undefined) {
