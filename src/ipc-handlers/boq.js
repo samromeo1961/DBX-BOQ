@@ -254,29 +254,28 @@ async function updateItem(event, billItem) {
 
     // Special handling if BLoad is being changed (moving item to different load)
     // Since BLoad is part of the primary key, we need to use DELETE + INSERT
-    // Ensure both values are numbers for proper comparison
-    const currentBLoad = parseInt(billItem.BLoad) || 0;
+    // Handle NULL BLoad separately from numeric BLoad
+    const isNullBLoad = billItem.BLoad === null || billItem.BLoad === undefined || billItem.BLoad === '';
+    const currentBLoad = isNullBLoad ? null : (parseInt(billItem.BLoad) || 0);
     const newBLoad = billItem.newBLoad !== undefined ? parseInt(billItem.newBLoad) : undefined;
 
     if (newBLoad !== undefined && newBLoad !== currentBLoad) {
       console.log(`🔄 BOQ: Moving item from Load ${currentBLoad} to Load ${newBLoad}`);
 
       // First, get the current record to preserve all fields
-      const selectQuery = `
-        SELECT *
-        FROM ${billTable}
-        WHERE JobNo = @jobNo
-          AND CostCentre = @costCentre
-          AND BLoad = @bLoad
-          AND LineNumber = @lineNumber
-      `;
+      const selectQuery = isNullBLoad
+        ? `SELECT * FROM ${billTable}
+           WHERE JobNo = @jobNo AND CostCentre = @costCentre AND BLoad IS NULL AND LineNumber = @lineNumber`
+        : `SELECT * FROM ${billTable}
+           WHERE JobNo = @jobNo AND CostCentre = @costCentre AND BLoad = @bLoad AND LineNumber = @lineNumber`;
 
-      const selectResult = await pool.request()
+      const selectRequest = pool.request()
         .input('jobNo', billItem.JobNo)
         .input('costCentre', billItem.CostCentre)
-        .input('bLoad', currentBLoad)
-        .input('lineNumber', billItem.LineNumber)
-        .query(selectQuery);
+        .input('lineNumber', billItem.LineNumber);
+      if (!isNullBLoad) selectRequest.input('bLoad', currentBLoad);
+
+      const selectResult = await selectRequest.query(selectQuery);
 
       if (selectResult.recordset.length === 0) {
         throw new Error('Item not found');
@@ -285,20 +284,19 @@ async function updateItem(event, billItem) {
       const currentRecord = selectResult.recordset[0];
 
       // Delete the old record
-      const deleteQuery = `
-        DELETE FROM ${billTable}
-        WHERE JobNo = @jobNo
-          AND CostCentre = @costCentre
-          AND BLoad = @bLoad
-          AND LineNumber = @lineNumber
-      `;
+      const deleteQuery = isNullBLoad
+        ? `DELETE FROM ${billTable}
+           WHERE JobNo = @jobNo AND CostCentre = @costCentre AND BLoad IS NULL AND LineNumber = @lineNumber`
+        : `DELETE FROM ${billTable}
+           WHERE JobNo = @jobNo AND CostCentre = @costCentre AND BLoad = @bLoad AND LineNumber = @lineNumber`;
 
-      await pool.request()
+      const deleteRequest = pool.request()
         .input('jobNo', billItem.JobNo)
         .input('costCentre', billItem.CostCentre)
-        .input('bLoad', currentBLoad)
-        .input('lineNumber', billItem.LineNumber)
-        .query(deleteQuery);
+        .input('lineNumber', billItem.LineNumber);
+      if (!isNullBLoad) deleteRequest.input('bLoad', currentBLoad);
+
+      await deleteRequest.query(deleteQuery);
 
       // Insert new record with updated BLoad and other fields
       const insertRequest = pool.request()
@@ -341,8 +339,12 @@ async function updateItem(event, billItem) {
     const request = pool.request()
       .input('jobNo', billItem.JobNo)
       .input('costCentre', billItem.CostCentre)
-      .input('bLoad', currentBLoad)
       .input('lineNumber', billItem.LineNumber);
+
+    // Only add bLoad parameter if not null
+    if (!isNullBLoad) {
+      request.input('bLoad', currentBLoad);
+    }
 
     if (billItem.Quantity !== undefined) {
       updates.push('Quantity = @quantity');
@@ -371,12 +373,14 @@ async function updateItem(event, billItem) {
       };
     }
 
+    // Use IS NULL for null BLoad, = @bLoad otherwise
+    const bLoadCondition = isNullBLoad ? 'BLoad IS NULL' : 'BLoad = @bLoad';
     const updateQuery = `
       UPDATE ${billTable}
       SET ${updates.join(', ')}
       WHERE JobNo = @jobNo
         AND CostCentre = @costCentre
-        AND BLoad = @bLoad
+        AND ${bLoadCondition}
         AND LineNumber = @lineNumber
     `;
 
@@ -414,22 +418,35 @@ async function deleteItem(event, params) {
     const dbConfig = credStore.getCredentials();
     const billTable = qualifyTable('Bill', dbConfig);
 
-    console.log('🗑️ BOQ: Deleting item at line', lineNumber);
+    // Handle NULL BLoad separately from numeric BLoad
+    const isNullBLoad = bLoad === null || bLoad === undefined || bLoad === '';
+    const parsedBLoad = isNullBLoad ? null : (parseInt(bLoad) || 0);
 
-    const deleteQuery = `
-      DELETE FROM ${billTable}
-      WHERE JobNo = @jobNo
-        AND CostCentre = @costCentre
-        AND BLoad = @bLoad
-        AND LineNumber = @lineNumber
-    `;
+    console.log('🗑️ BOQ: Deleting item at line', lineNumber, 'BLoad:', parsedBLoad, '(isNull:', isNullBLoad, ')');
 
-    const result = await pool.request()
+    // Use different query for NULL vs non-NULL BLoad
+    const deleteQuery = isNullBLoad
+      ? `DELETE FROM ${billTable}
+         WHERE JobNo = @jobNo
+           AND CostCentre = @costCentre
+           AND BLoad IS NULL
+           AND LineNumber = @lineNumber`
+      : `DELETE FROM ${billTable}
+         WHERE JobNo = @jobNo
+           AND CostCentre = @costCentre
+           AND BLoad = @bLoad
+           AND LineNumber = @lineNumber`;
+
+    const request = pool.request()
       .input('jobNo', jobNo)
       .input('costCentre', costCentre)
-      .input('bLoad', bLoad)
-      .input('lineNumber', lineNumber)
-      .query(deleteQuery);
+      .input('lineNumber', lineNumber);
+
+    if (!isNullBLoad) {
+      request.input('bLoad', parsedBLoad);
+    }
+
+    const result = await request.query(deleteQuery);
 
     console.log('✓ BOQ: Item deleted successfully');
 

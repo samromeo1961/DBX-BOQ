@@ -55,6 +55,40 @@
             </option>
           </select>
         </div>
+        <div class="col-6">
+          <select
+            :value="selectedLoad"
+            @change="$emit('update:selectedLoad', $event.target.value ? parseInt($event.target.value) : null)"
+            class="form-select form-select-sm"
+            title="Load to assign when adding items"
+          >
+            <option :value="null">No Load</option>
+            <option
+              v-for="load in availableLoads"
+              :key="load"
+              :value="load"
+            >
+              Load {{ load }}
+            </option>
+          </select>
+        </div>
+        <div class="col-6">
+          <select
+            :value="selectedSupplier"
+            @change="$emit('update:selectedSupplier', $event.target.value || null)"
+            class="form-select form-select-sm"
+            title="Supplier to assign when adding items"
+          >
+            <option :value="null">No Supplier</option>
+            <option
+              v-for="supplier in suppliers"
+              :key="supplier.Code"
+              :value="supplier.Code"
+            >
+              {{ supplier.Name }}
+            </option>
+          </select>
+        </div>
       </div>
     </div>
 
@@ -111,9 +145,25 @@ export default {
     costCentre: String,
     priceLevel: Number,
     billDate: Date,
-    layoutHorizontal: Boolean
+    layoutHorizontal: Boolean,
+    availableLoads: {
+      type: Array,
+      default: () => []
+    },
+    selectedLoad: {
+      type: Number,
+      default: null
+    },
+    suppliers: {
+      type: Array,
+      default: () => []
+    },
+    selectedSupplier: {
+      type: String,
+      default: null
+    }
   },
-  emits: ['addItems', 'close', 'toggleLayout'],
+  emits: ['addItems', 'close', 'toggleLayout', 'update:selectedLoad', 'update:selectedSupplier'],
   setup(props, { emit }) {
     const api = useElectronAPI();
 

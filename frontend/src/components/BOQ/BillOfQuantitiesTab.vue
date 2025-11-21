@@ -53,6 +53,10 @@
             :priceLevel="selectedPriceLevel"
             :billDate="billDate"
             :layoutHorizontal="catalogueLayoutHorizontal"
+            :availableLoads="availableLoads"
+            :suppliers="suppliers"
+            v-model:selectedLoad="selectedLoad"
+            v-model:selectedSupplier="selectedSupplier"
             @addItems="onAddItems"
             @close="catalogueSearchVisible = false"
             @toggleLayout="catalogueLayoutHorizontal = !catalogueLayoutHorizontal"
@@ -127,6 +131,8 @@ export default {
     const catalogueSearchVisible = ref(false);
     const catalogueLayoutHorizontal = ref(true); // true = horizontal (bottom), false = vertical (right)
     const availableLoads = ref([]);
+    const suppliers = ref([]);
+    const selectedSupplier = ref(null);
     const showWorkupModal = ref(false);
     const selectedWorkupItem = ref({});
 
@@ -306,7 +312,8 @@ export default {
             BLoad: selectedLoad.value,
             Quantity: defaultQuantity,
             UnitPrice: item.Price || 0,
-            XDescription: item.Description
+            XDescription: item.Description,
+            Supplier: selectedSupplier.value
           });
 
           await api.boq.addItem({
@@ -316,7 +323,8 @@ export default {
             BLoad: selectedLoad.value,
             Quantity: defaultQuantity,
             UnitPrice: item.Price || 0,
-            XDescription: item.Description || null
+            XDescription: item.Description || null,
+            Supplier: selectedSupplier.value || null
           });
         }
 
@@ -336,18 +344,45 @@ export default {
 
       loading.value = true;
       try {
+        let deletedCount = 0;
+        let errors = [];
+
         for (const item of items) {
-          await api.boq.deleteItem(
+          console.log('🗑️ Deleting item:', {
+            JobNo: item.JobNo,
+            CostCentre: item.CostCentre,
+            BLoad: item.BLoad,
+            LineNumber: item.LineNumber,
+            ItemCode: item.ItemCode
+          });
+
+          if (!item.LineNumber) {
+            errors.push(`Item ${item.ItemCode} has no LineNumber - cannot delete`);
+            continue;
+          }
+
+          const result = await api.boq.deleteItem(
             item.JobNo,
             item.CostCentre,
             item.BLoad,
             item.LineNumber
           );
+
+          if (result.success) {
+            deletedCount++;
+          } else {
+            errors.push(`Failed to delete ${item.ItemCode}: ${result.message}`);
+          }
+        }
+
+        if (errors.length > 0) {
+          alert(`Deleted ${deletedCount} items.\n\nErrors:\n${errors.join('\n')}`);
         }
 
         await loadBill();
       } catch (error) {
         console.error('Error deleting items:', error);
+        alert('Error deleting items: ' + error.message);
       } finally {
         loading.value = false;
       }
@@ -420,6 +455,17 @@ export default {
       } else {
         // Default to 10 loads
         availableLoads.value = Array.from({ length: 10 }, (_, i) => i + 1);
+      }
+
+      // Load suppliers
+      try {
+        const suppliersResult = await api.suppliers.getList(false);
+        if (suppliersResult.success) {
+          suppliers.value = suppliersResult.data || [];
+          console.log(`✅ Loaded ${suppliers.value.length} suppliers`);
+        }
+      } catch (error) {
+        console.error('Error loading suppliers:', error);
       }
 
       // Mark as initialized and load initial bill data
@@ -564,6 +610,8 @@ export default {
       catalogueSearchVisible,
       catalogueLayoutHorizontal,
       availableLoads,
+      suppliers,
+      selectedSupplier,
       billTotal,
       showWorkupModal,
       selectedWorkupItem,
