@@ -447,7 +447,18 @@ export default {
     async function onSaveItem(itemData) {
       loading.value = true;
       try {
-        const result = await api.catalogue.addItem(itemData);
+        // Check if editing existing item or adding new
+        const isEdit = editingItem.value && editingItem.value.PriceCode;
+        let result;
+
+        if (isEdit) {
+          // Update existing item
+          result = await api.catalogue.updateItem(itemData);
+        } else {
+          // Add new item
+          result = await api.catalogue.addItem(itemData);
+        }
+
         if (result.success) {
           showAddModal.value = false;
           editingItem.value = null;
