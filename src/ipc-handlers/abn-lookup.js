@@ -54,13 +54,11 @@ async function lookupABN(event, abn, guid = null) {
     const apiGuid = guid || DEFAULT_GUID;
 
     if (apiGuid === DEFAULT_GUID) {
-      console.warn('Using default ABN Lookup GUID. Please register for your own GUID at https://abr.business.gov.au/Tools/WebServices');
+      console.warn('WARNING: Using default ABN Lookup GUID. Please register at https://abr.business.gov.au/Tools/WebServices');
     }
 
     // Build ABR API URL
     const url = `https://abr.business.gov.au/abrxmlsearch/AbrXmlSearch.asmx/SearchByABNv202001?searchString=${cleanedABN}&includeHistoricalDetails=N&authenticationGuid=${apiGuid}`;
-
-    console.log('Querying ABR for ABN:', cleanedABN);
 
     // Make HTTP request to ABR
     const xmlData = await new Promise((resolve, reject) => {
@@ -75,13 +73,14 @@ async function lookupABN(event, abn, guid = null) {
           resolve(data);
         });
       }).on('error', (err) => {
+        console.error('ABN Lookup HTTP error:', err.message);
         reject(err);
       });
     });
 
     // Check if response looks like XML
     if (!xmlData.trim().startsWith('<')) {
-      console.error('ABR API returned non-XML response:', xmlData.substring(0, 200));
+      console.error('ABR API returned non-XML response');
       return {
         success: false,
         message: 'ABR API returned an unexpected response. This usually means:\n' +
@@ -101,6 +100,7 @@ async function lookupABN(event, abn, guid = null) {
 
     // Check for API errors
     if (!result || !result.ABRPayloadSearchResults) {
+      console.error('ABN Lookup: Invalid response structure');
       return {
         success: false,
         message: 'Invalid response from ABR service'
@@ -112,6 +112,7 @@ async function lookupABN(event, abn, guid = null) {
     // Check for service errors
     if (payload.response && payload.response.exception) {
       const exception = payload.response.exception;
+      console.error('ABN Lookup error:', exception.exceptionDescription);
       return {
         success: false,
         message: `ABR Error: ${exception.exceptionDescription || 'Unknown error'}`
@@ -133,15 +134,16 @@ async function lookupABN(event, abn, guid = null) {
     const mainName = businessEntity.mainName;
     const legalName = businessEntity.legalName;
 
-    // Check if ABN is active
-    const abnStatus = abn201408?.['$']?.status || 'Unknown';
-    const isActive = abnStatus === 'Active';
+    // Check if ABN is active - try multiple possible locations for status
+    let abnStatus = 'Active'; // Default to Active if we can't determine
 
-    if (!isActive) {
-      return {
-        success: false,
-        message: `ABN is ${abnStatus}. Only active ABNs can be looked up.`
-      };
+    // Try different possible locations for the status field
+    if (abn201408?.['$']?.status) {
+      abnStatus = abn201408['$'].status;
+    } else if (entityStatus?.['$']?.entityStatusCode) {
+      abnStatus = entityStatus['$'].entityStatusCode;
+    } else if (entityStatus) {
+      abnStatus = entityStatus;
     }
 
     // Get entity type
@@ -207,8 +209,17 @@ async function lookupABN(event, abn, guid = null) {
     // Get GST registration
     let gstRegistered = false;
     const gst = businessEntity.goodsAndServicesTax;
-    if (gst && gst['$'] && gst['$'].status === 'Active') {
-      gstRegistered = true;
+
+    // Try multiple possible structures for GST status
+    if (gst) {
+      if (gst['$'] && gst['$'].status === 'Active') {
+        gstRegistered = true;
+      } else if (gst.status === 'Active') {
+        gstRegistered = true;
+      } else if (typeof gst === 'object' && gst.effectiveFrom) {
+        // If GST object exists with effectiveFrom date, it's registered
+        gstRegistered = true;
+      }
     }
 
     // Return formatted result
@@ -225,15 +236,13 @@ async function lookupABN(event, abn, guid = null) {
       postcode: address.postcode || ''
     };
 
-    console.log('ABN Lookup successful:', businessDetails);
-
     return {
       success: true,
       data: businessDetails
     };
 
   } catch (error) {
-    console.error('ABN Lookup error:', error);
+    console.error('ABN Lookup error:', error.message);
     return {
       success: false,
       message: error.message || 'Failed to lookup ABN'
@@ -263,28 +272,59 @@ async function searchByBusinessName(event, businessName, guid = null, options = 
     const apiGuid = guid || DEFAULT_GUID;
 
     if (apiGuid === DEFAULT_GUID) {
-      console.warn('Using default ABN Lookup GUID. Please register for your own GUID at https://abr.business.gov.au/Tools/WebServices');
+      console.warn('WARNING: Using default ABN Lookup GUID. Please register at https://abr.business.gov.au/Tools/WebServices');
     }
 
-    // Build query parameters
+    // Build query parameters for Advanced search
+    // Using ABRSearchByNameAdvancedSimpleProtocol2017
+
+    // Determine which state(s) to search based on postcode
+    const postcode = options.postcode || '';
+    const stateFilters = {
+      NSW: 'N', VIC: 'N', QLD: 'N', SA: 'N',
+      WA: 'N', TAS: 'N', ACT: 'N', NT: 'N'
+    };
+
+    // If we have a specific postcode, enable only that state
+    // Otherwise, search all states
+    if (postcode) {
+      const pc = parseInt(postcode);
+      if (pc >= 2000 && pc <= 2999) stateFilters.NSW = 'Y';
+      else if (pc >= 3000 && pc <= 3999) stateFilters.VIC = 'Y';
+      else if (pc >= 4000 && pc <= 4999) stateFilters.QLD = 'Y';
+      else if (pc >= 5000 && pc <= 5999) stateFilters.SA = 'Y';
+      else if (pc >= 6000 && pc <= 6999) stateFilters.WA = 'Y';
+      else if (pc >= 7000 && pc <= 7999) stateFilters.TAS = 'Y';
+      else if (pc >= 800 && pc <= 899) stateFilters.NT = 'Y';
+      else if (pc >= 200 && pc <= 299) stateFilters.ACT = 'Y';
+      else if (pc >= 2600 && pc <= 2619) stateFilters.ACT = 'Y';
+      else {
+        // Unknown postcode range, search all states
+        Object.keys(stateFilters).forEach(key => stateFilters[key] = 'Y');
+      }
+    } else {
+      // No postcode provided, search all states
+      Object.keys(stateFilters).forEach(key => stateFilters[key] = 'Y');
+    }
+
+    // Build params - API requires postcode, use default if not provided
     const params = new URLSearchParams({
       name: businessName.trim(),
-      authenticationGuid: apiGuid
+      authenticationGuid: apiGuid,
+      postcode: postcode || '2000',  // Default to Sydney if no postcode provided
+      legalName: 'Y',
+      businessName: 'Y',
+      tradingName: 'Y',
+      ...stateFilters,
+      activeABNsOnly: 'Y',     // Only search active ABNs
+      searchWidth: 'narrow',   // Start with narrow, can be widened if needed
+      minimumScore: '50',      // Moderate threshold
+      maxSearchResults: '100'
     });
 
-    // Add optional filters
-    if (options.postcode) {
-      params.append('postcode', options.postcode);
-    }
 
-    // Default to searching both legal and trading names
-    params.append('legalName', 'Y');
-    params.append('tradingName', 'Y');
-
-    // Build ABR API URL
-    const url = `https://abr.business.gov.au/abrxmlsearch/AbrXmlSearch.asmx/ABRSearchByNameSimpleProtocol?${params.toString()}`;
-
-    console.log('Searching ABR for business name:', businessName);
+    // Build ABR API URL - using the correct 2017 SimpleProtocol endpoint
+    const url = `https://abr.business.gov.au/abrxmlsearch/AbrXmlSearch.asmx/ABRSearchByNameAdvancedSimpleProtocol2017?${params.toString()}`;
 
     // Make HTTP request to ABR
     const xmlData = await new Promise((resolve, reject) => {
@@ -402,11 +442,20 @@ async function searchByBusinessName(event, businessName, guid = null, options = 
       const state = record.mainBusinessPhysicalAddress?.stateCode || '';
       const postcode = record.mainBusinessPhysicalAddress?.postcode || '';
 
-      // Get GST status
+      // Get GST status - try multiple possible structures
       let gstRegistered = false;
-      if (record.goodsAndServicesTax) {
-        const gstStatus = record.goodsAndServicesTax['$']?.status;
-        gstRegistered = gstStatus === 'Active';
+      const gst = record.goodsAndServicesTax;
+
+      if (gst) {
+        // Try different possible locations for GST status
+        if (gst['$'] && gst['$'].status === 'Active') {
+          gstRegistered = true;
+        } else if (gst.status === 'Active') {
+          gstRegistered = true;
+        } else if (typeof gst === 'object' && gst.effectiveFrom) {
+          // If GST object exists with effectiveFrom date, it's registered
+          gstRegistered = true;
+        }
       }
 
       return {
@@ -420,8 +469,6 @@ async function searchByBusinessName(event, businessName, guid = null, options = 
         gstRegistered: gstRegistered
       };
     });
-
-    console.log(`Found ${businesses.length} businesses matching '${businessName}'`);
 
     return {
       success: true,

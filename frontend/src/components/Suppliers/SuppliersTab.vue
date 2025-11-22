@@ -375,9 +375,7 @@
                               <div class="d-flex w-100 justify-content-between">
                                 <h6 class="mb-1">{{ business.name }}</h6>
                                 <small>
-                                  <span v-if="business.gstRegistered" class="badge bg-success">GST</span>
-                                  <span v-else class="badge bg-secondary">No GST</span>
-                                  <span v-if="!business.isActive" class="badge bg-warning text-dark ms-1">{{ business.abnStatus }}</span>
+                                  <span v-if="!business.isActive" class="badge bg-warning text-dark">{{ business.abnStatus }}</span>
                                 </small>
                               </div>
                               <p class="mb-1">
@@ -2080,7 +2078,12 @@ async function searchBusinessName() {
     const apiKeys = await api.settings.getApiKeys();
     const abnGuid = apiKeys?.abnLookupGuid || null;
 
-    const result = await api.abnLookup.searchByName(businessNameQuery.value, abnGuid);
+    // Use postcode from form if available, otherwise use a default
+    const searchOptions = {
+      postcode: formData.value.PostCode || '2000'
+    };
+
+    const result = await api.abnLookup.searchByName(businessNameQuery.value, abnGuid, searchOptions);
 
     if (result.success && result.data) {
       businessNameResults.value = result.data;
@@ -2098,20 +2101,48 @@ async function searchBusinessName() {
   }
 }
 
-function selectBusinessFromSearch(business) {
+async function selectBusinessFromSearch(business) {
   // Populate form with selected business
   formData.value.ABN = business.abn.replace(/(\d{2})(\d{3})(\d{3})(\d{3})/, '$1 $2 $3 $4');
   formData.value.Name = business.name;
   if (business.state) formData.value.State = business.state;
   if (business.postcode) formData.value.PostCode = business.postcode;
-  formData.value.GST = business.gstRegistered;
 
   // Clear search
   businessNameResults.value = [];
   businessNameQuery.value = '';
   showBusinessNameSearch.value = false;
 
-  alert(`Selected: ${business.name}\nABN: ${business.abn}\n\nForm has been populated. Please verify and add additional details.`);
+  // Automatically verify the ABN to get accurate GST status and other details
+  // The name search API doesn't include GST data, so we need to verify separately
+  try {
+    const apiKeys = await api.settings.getApiKeys();
+    const abnGuid = apiKeys?.abnLookupGuid || null;
+
+    const expectedData = {
+      name: business.name,
+      gstRegistered: false  // Will be updated from verification
+    };
+
+    const verifyResult = await api.abnLookup.verify(business.abn.replace(/\s/g, ''), expectedData, abnGuid);
+
+    if (verifyResult.success && verifyResult.data && verifyResult.data.abnData) {
+      const abnData = verifyResult.data.abnData;
+
+      // Update form with verified GST status
+      formData.value.GST = abnData.gstRegistered;
+
+      alert(`Selected: ${business.name}\nABN: ${business.abn}\nGST Registered: ${abnData.gstRegistered ? 'Yes' : 'No'}\n\nForm has been populated with verified details.`);
+    } else {
+      // Verification failed, but still populate what we have
+      formData.value.GST = false;
+      alert(`Selected: ${business.name}\nABN: ${business.abn}\n\nNote: Could not verify GST status. Please check manually.`);
+    }
+  } catch (err) {
+    console.error('Error verifying selected business:', err);
+    formData.value.GST = false;
+    alert(`Selected: ${business.name}\nABN: ${business.abn}\n\nNote: Could not verify GST status. Please check manually.`);
+  }
 }
 
 function clearBusinessNameSearch() {
