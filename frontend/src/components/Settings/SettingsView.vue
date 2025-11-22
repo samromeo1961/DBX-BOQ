@@ -131,6 +131,17 @@
           <li class="nav-item">
             <button
               class="nav-link"
+              :class="{ active: activeTab === 'nominated-suppliers' }"
+              @click="activeTab = 'nominated-suppliers'"
+              type="button"
+            >
+              <i class="bi bi-truck me-1"></i>
+              Nominated Suppliers
+            </button>
+          </li>
+          <li class="nav-item">
+            <button
+              class="nav-link"
               :class="{ active: activeTab === 'documents' }"
               @click="activeTab = 'documents'"
               type="button"
@@ -184,6 +195,9 @@
         <!-- Email / SMTP Settings Tab -->
         <EmailSettingsTab v-if="activeTab === 'email'" />
 
+        <!-- Nominated Suppliers Tab -->
+        <NominatedSuppliersTab v-if="activeTab === 'nominated-suppliers'" />
+
         <!-- Documents Settings Tab -->
         <DocumentsSettingsTab v-if="activeTab === 'documents'" />
 
@@ -227,6 +241,7 @@ import PdfSettingsTab from './PdfSettingsTab.vue';
 import UiPreferencesTab from './UiPreferencesTab.vue';
 import ApiKeysTab from './ApiKeysTab.vue';
 import EmailSettingsTab from './EmailSettingsTab.vue';
+import NominatedSuppliersTab from './NominatedSuppliersTab.vue';
 import DocumentsSettingsTab from './DocumentsSettingsTab.vue';
 import DatabaseSchemaTab from './DatabaseSchemaTab.vue';
 
@@ -242,6 +257,7 @@ export default {
     UiPreferencesTab,
     ApiKeysTab,
     EmailSettingsTab,
+    NominatedSuppliersTab,
     DocumentsSettingsTab,
     DatabaseSchemaTab
   },

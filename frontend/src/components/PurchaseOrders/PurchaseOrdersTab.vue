@@ -545,15 +545,17 @@ export default {
       {
         headerName: 'Status',
         field: 'Status',
-        width: 120,
+        width: 140,
         editable: true,
         cellEditor: 'agSelectCellEditor',
         cellEditorParams: {
-          values: ['Draft', 'Ordered', 'Cancelled']
+          values: ['Draft', 'Sent', 'Ordered', 'Cancelled']
         },
         cellRenderer: (params) => {
           const status = params.value || 'Draft';
           switch (status) {
+            case 'Sent':
+              return '<span class="badge bg-info"><i class="bi bi-send-fill me-1"></i>Sent</span>';
             case 'Ordered':
               return '<span class="badge bg-primary">Ordered</span>';
             case 'Cancelled':
@@ -568,7 +570,7 @@ export default {
           valueFormatter: (params) => params.value || 'Draft'
         },
         tooltipValueGetter: (params) => {
-          return 'Click to change status (Draft / Ordered / Cancelled)';
+          return 'Click to change status (Draft / Sent / Ordered / Cancelled)';
         }
       },
       {

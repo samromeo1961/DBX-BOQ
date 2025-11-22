@@ -347,6 +347,11 @@ export function useElectronAPI() {
       generateFull: (systemDb, jobDb) => window.electronAPI?.schema.generateFull(systemDb, jobDb)
     },
 
+    // Shell functions (open external URLs, etc.)
+    shell: {
+      openExternal: (url) => window.electronAPI?.shell.openExternal(url)
+    },
+
     // Utility
     isElectron
   };

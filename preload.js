@@ -344,6 +344,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     checkStatus: () => ipcRenderer.invoke('schema:check-status'),
     generateMigration: () => ipcRenderer.invoke('schema:generate-migration'),
     generateFull: (systemDb, jobDb) => ipcRenderer.invoke('schema:generate-full', systemDb, jobDb)
+  },
+
+  // Shell functions (open external URLs, etc.)
+  shell: {
+    openExternal: (url) => ipcRenderer.invoke('shell:open-external', url)
   }
 });
 

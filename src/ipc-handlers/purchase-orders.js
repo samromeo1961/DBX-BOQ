@@ -789,10 +789,9 @@ async function getPreferredSuppliers(event, costCentre) {
     // Check for NominatedSupplier table (newer) or CCSuppliers table (older)
     const checkTable = await pool.request().query(`
       SELECT TABLE_NAME
-      FROM INFORMATION_SCHEMA.TABLES
+      FROM [${sysDbName}].INFORMATION_SCHEMA.TABLES
       WHERE TABLE_SCHEMA = 'dbo'
       AND (TABLE_NAME = 'NominatedSupplier' OR TABLE_NAME = 'CCSuppliers')
-      AND TABLE_CATALOG = '${sysDbName}'
     `);
 
     if (checkTable.recordset.length === 0) {
@@ -813,9 +812,9 @@ async function getPreferredSuppliers(event, costCentre) {
       query = `
         SELECT
           ns.CostCentre,
-          ns.Code AS SupplierCode,
+          ns.Code AS Code,
           s.Supplier_Code,
-          s.SupplierName,
+          s.SupplierName AS Name,
           s.AccountContact,
           s.AccountPhone,
           s.AccountEmail,
@@ -831,10 +830,10 @@ async function getPreferredSuppliers(event, costCentre) {
       query = `
         SELECT
           ccs.CostCentre,
-          ccs.SupplierCode,
+          ccs.SupplierCode AS Code,
           ccs.Preferred,
           ccs.SortOrder,
-          s.SupplierName,
+          s.SupplierName AS Name,
           s.AccountContact,
           s.AccountPhone,
           s.AccountEmail
@@ -875,10 +874,9 @@ async function getSuppliersForCostCentre(event, costCentre) {
     // Check for NominatedSupplier or CCSuppliers table
     const checkTable = await pool.request().query(`
       SELECT TABLE_NAME
-      FROM INFORMATION_SCHEMA.TABLES
+      FROM [${sysDbName}].INFORMATION_SCHEMA.TABLES
       WHERE TABLE_SCHEMA = 'dbo'
       AND (TABLE_NAME = 'NominatedSupplier' OR TABLE_NAME = 'CCSuppliers')
-      AND TABLE_CATALOG = '${sysDbName}'
     `);
 
     const hasNominatedSupplier = checkTable.recordset.some(r => r.TABLE_NAME === 'NominatedSupplier');
@@ -995,7 +993,7 @@ async function updateOrder(event, orderNumber, updates) {
 
     if (orderExists) {
       // Update existing order
-      const updateFields = ['OrderDate = GETDATE()']; // Always update OrderDate when assigning supplier
+      const updateFields = [];
       const request = pool.request()
         .input('JobNo', jobNo)
         .input('CostCentre', costCentre)
@@ -1024,6 +1022,11 @@ async function updateOrder(event, orderNumber, updates) {
         // Only if Status column exists
         updateFields.push('Status = @Status');
         request.input('Status', updates.status);
+      }
+
+      // Only update OrderDate when order is being marked as sent/ordered
+      if (updates.status && (updates.status === 'Sent' || updates.status === 'Ordered')) {
+        updateFields.push('OrderDate = GETDATE()');
       }
 
       const updateQuery = `
@@ -1687,10 +1690,9 @@ async function addNominatedSupplier(event, costCentre, supplierCode) {
     // Check if NominatedSupplier table exists
     const checkTable = await pool.request().query(`
       SELECT TABLE_NAME
-      FROM INFORMATION_SCHEMA.TABLES
+      FROM [${sysDbName}].INFORMATION_SCHEMA.TABLES
       WHERE TABLE_SCHEMA = 'dbo'
       AND TABLE_NAME = 'NominatedSupplier'
-      AND TABLE_CATALOG = '${sysDbName}'
     `);
 
     if (checkTable.recordset.length === 0) {
@@ -1716,8 +1718,8 @@ async function addNominatedSupplier(event, costCentre, supplierCode) {
       .input('SupplierCode', supplierCode)
       .query(`
         INSERT INTO [${sysDbName}].[dbo].[NominatedSupplier]
-        (CostCentre, Code)
-        VALUES (@CostCentre, @SupplierCode)
+        (CCBank, CostCentre, Code)
+        VALUES (1, @CostCentre, @SupplierCode)
       `);
 
     return {

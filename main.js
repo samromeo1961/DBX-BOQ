@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Menu, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, dialog, shell } = require('electron');
 const path = require('path');
 const Store = require('electron-store');
 
@@ -241,7 +241,12 @@ ipcMain.handle('db:save-connection', async (event, dbConfig) => {
     // Also save to credentials store
     credentialsStore.saveCredentials(dbConfig);
 
-    // Connect to database
+    // Close existing database connection before reconnecting with new settings
+    console.log('🔌 Closing existing database connection...');
+    await db.close();
+
+    // Connect to database with new settings
+    console.log('🔌 Connecting to database with new settings...');
     await db.connect(dbConfig);
 
     // Ensure Supplier column exists in Bill table
@@ -673,5 +678,19 @@ ipcMain.handle('document-cache:create-directory', (event, dirPath) => documentCa
 ipcMain.handle('schema:check-status', () => schemaMigration.checkSchemaStatus());
 ipcMain.handle('schema:generate-migration', () => schemaMigration.generateMigrationScript());
 ipcMain.handle('schema:generate-full', (event, systemDb, jobDb) => schemaMigration.generateFullScript(systemDb, jobDb));
+
+// ============================================================
+// IPC Handlers - Shell (open external URLs)
+// ============================================================
+
+ipcMain.handle('shell:open-external', async (event, url) => {
+  try {
+    await shell.openExternal(url);
+    return { success: true };
+  } catch (error) {
+    console.error('Error opening external URL:', error);
+    return { success: false, error: error.message };
+  }
+});
 
 console.log('DBx BOQ - Electron main process initialized');
