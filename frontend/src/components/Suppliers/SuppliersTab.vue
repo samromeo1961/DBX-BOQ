@@ -585,9 +585,9 @@
                   </div>
                 </div>
 
-                <!-- Contact Details -->
+                <!-- Contact Details Row 1: Contact Person, Dear (Salutation), Email -->
                 <div class="row mb-3">
-                  <div class="col-md-6">
+                  <div class="col-md-4">
                     <label class="form-label">Contact Person</label>
                     <input
                       v-model="formData.Contact"
@@ -596,7 +596,7 @@
                       maxlength="50"
                     />
                   </div>
-                  <div class="col-md-6">
+                  <div class="col-md-4">
                     <label class="form-label">Dear (Salutation)</label>
                     <input
                       v-model="formData.Dear"
@@ -606,10 +606,6 @@
                       placeholder="e.g., John, Ms. Smith"
                     />
                   </div>
-                </div>
-
-                <!-- Email, Website, Phone -->
-                <div class="row mb-3">
                   <div class="col-md-4">
                     <label class="form-label">Email</label>
                     <input
@@ -619,6 +615,10 @@
                       maxlength="100"
                     />
                   </div>
+                </div>
+
+                <!-- Contact Details Row 2: Phone, Mobile, Fax -->
+                <div class="row mb-3">
                   <div class="col-md-4">
                     <label class="form-label">Phone</label>
                     <input
@@ -637,10 +637,6 @@
                       maxlength="20"
                     />
                   </div>
-                </div>
-
-                <!-- Fax -->
-                <div class="row mb-3">
                   <div class="col-md-4">
                     <label class="form-label">Fax</label>
                     <input
